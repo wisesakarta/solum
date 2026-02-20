@@ -104,16 +104,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         }
         if (!g_state.customIconPath.empty())
         {
-            HICON hLoadedIcon = static_cast<HICON>(LoadImageW(nullptr, g_state.customIconPath.c_str(), IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE));
-            if (hLoadedIcon)
-            {
-                g_hCustomIcon = hLoadedIcon;
-                SendMessageW(g_hwndMain, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hLoadedIcon));
-                SendMessageW(g_hwndMain, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hLoadedIcon));
-            }
-            else
+            if (!ApplyCustomIcon(g_state.customIconPath, g_state.customIconIndex, false))
             {
                 g_state.customIconPath.clear();
+                g_state.customIconIndex = 0;
             }
         }
         if (g_state.background.enabled && !g_state.background.imagePath.empty())
@@ -542,6 +536,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             break;
         case IDM_VIEW_ICON_CHANGE:
             ViewChangeIcon();
+            break;
+        case IDM_VIEW_ICON_SYSTEM:
+            ViewChooseSystemIcon();
             break;
         case IDM_VIEW_ICON_RESET:
             ViewResetIcon();

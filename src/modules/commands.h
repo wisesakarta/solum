@@ -7,6 +7,7 @@
 
 #pragma once
 #include <windows.h>
+#include <string>
 
 extern PAGESETUPDLGW g_pageSetup;
 
@@ -32,5 +33,7 @@ void ViewZoomDefault();
 void ViewStatusBar();
 void ViewAlwaysOnTop();
 void ViewChangeIcon();
+void ViewChooseSystemIcon();
 void ViewResetIcon();
+bool ApplyCustomIcon(const std::wstring &iconPath, int iconIndex, bool showError = true);
 void HelpCheckUpdates();

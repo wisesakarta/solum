@@ -123,6 +123,7 @@ struct AppState
     std::deque<std::wstring> recentFiles;
     BackgroundSettings background;
     std::wstring customIconPath;
+    int customIconIndex = 0;
 };
 
 typedef BOOL(WINAPI *fnAllowDarkModeForWindow)(HWND hWnd, BOOL allow);

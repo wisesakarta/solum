@@ -82,7 +82,8 @@ BEGIN
         MENUITEM SEPARATOR
         POPUP "&Icon"
         BEGIN
-            MENUITEM "&Change Icon...", IDM_VIEW_ICON_CHANGE
+            MENUITEM "Change &Icon File...", IDM_VIEW_ICON_CHANGE
+            MENUITEM "Choose from &System Icons...", IDM_VIEW_ICON_SYSTEM
             MENUITEM "&Reset to Default", IDM_VIEW_ICON_RESET
         END
     END
