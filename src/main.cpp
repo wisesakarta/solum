@@ -17,6 +17,7 @@
 #include <gdiplus.h>
 #include <algorithm>
 #include <vector>
+#include <cwctype>
 
 #include "resource.h"
 #include "core/types.h"
@@ -54,6 +55,23 @@ struct DocumentTabState
 static std::vector<DocumentTabState> g_documents;
 static int g_activeDocument = -1;
 static bool g_switchingDocument = false;
+
+static std::wstring NormalizePathForCompare(const std::wstring &path)
+{
+    if (path.empty())
+        return {};
+
+    wchar_t fullPath[MAX_PATH] = {};
+    DWORD len = GetFullPathNameW(path.c_str(), MAX_PATH, fullPath, nullptr);
+    std::wstring normalized;
+    if (len > 0 && len < MAX_PATH)
+        normalized = fullPath;
+    else
+        normalized = path;
+
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(), towlower);
+    return normalized;
+}
 
 static std::wstring DocumentTabLabel(const DocumentTabState &doc)
 {
@@ -178,12 +196,47 @@ static void CreateNewDocumentTab()
     LoadStateFromDocument(index);
 }
 
-static bool OpenPathInNewDocumentTab(const std::wstring &path)
+static int FindDocumentByPath(const std::wstring &path)
+{
+    const std::wstring needle = NormalizePathForCompare(path);
+    if (needle.empty())
+        return -1;
+
+    for (int i = 0; i < static_cast<int>(g_documents.size()); ++i)
+    {
+        if (NormalizePathForCompare(g_documents[i].filePath) == needle)
+            return i;
+    }
+    return -1;
+}
+
+static bool IsCurrentDocumentEmptyAndUntitled()
+{
+    if (g_activeDocument < 0 || g_activeDocument >= static_cast<int>(g_documents.size()))
+        return false;
+
+    const DocumentTabState &doc = g_documents[g_activeDocument];
+    return doc.filePath.empty() && !doc.modified && doc.text.empty();
+}
+
+static bool OpenPathInTabs(const std::wstring &path)
 {
     if (path.empty())
         return false;
 
-    CreateNewDocumentTab();
+    const int existingIndex = FindDocumentByPath(path);
+    if (existingIndex >= 0)
+    {
+        SwitchToDocument(existingIndex);
+        return true;
+    }
+
+    if (g_activeDocument >= 0)
+        SyncDocumentFromState(g_activeDocument, true);
+
+    if (!IsCurrentDocumentEmptyAndUntitled())
+        CreateNewDocumentTab();
+
     LoadFile(path);
     SyncDocumentFromState(g_activeDocument, true);
     return true;
@@ -200,7 +253,7 @@ static void OpenFileInNewDocumentTabDialog()
     ofn.nMaxFile = MAX_PATH;
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_ENABLESIZING;
     if (GetOpenFileNameW(&ofn))
-        OpenPathInNewDocumentTab(path);
+        OpenPathInTabs(path);
 }
 
 static void CloseCurrentDocumentTab()
@@ -234,6 +287,20 @@ static void CloseCurrentDocumentTab()
         TabCtrl_SetCurSel(g_hwndTabs, nextIndex);
     LoadStateFromDocument(nextIndex);
     RefreshAllDocumentTabLabels();
+}
+
+static void SwitchToNextDocumentTab(bool backward)
+{
+    if (g_documents.size() <= 1)
+        return;
+
+    int current = g_activeDocument;
+    if (current < 0)
+        current = 0;
+
+    const int count = static_cast<int>(g_documents.size());
+    int next = backward ? (current - 1 + count) % count : (current + 1) % count;
+    SwitchToDocument(next);
 }
 
 static bool ConfirmDiscardAllDocuments()
@@ -467,9 +534,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_DROPFILES:
     {
         HDROP hDrop = reinterpret_cast<HDROP>(wParam);
-        wchar_t path[MAX_PATH];
-        if (DragQueryFileW(hDrop, 0, path, MAX_PATH))
-            OpenPathInNewDocumentTab(path);
+        UINT fileCount = DragQueryFileW(hDrop, 0xFFFFFFFF, nullptr, 0);
+        for (UINT i = 0; i < fileCount; ++i)
+        {
+            wchar_t path[MAX_PATH] = {};
+            if (DragQueryFileW(hDrop, i, path, MAX_PATH))
+                OpenPathInTabs(path);
+        }
         DragFinish(hDrop);
         return 0;
     }
@@ -597,7 +668,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         {
             int idx = cmd - IDM_FILE_RECENT_BASE;
             if (idx < static_cast<int>(g_state.recentFiles.size()))
-                OpenPathInNewDocumentTab(g_state.recentFiles[idx]);
+                OpenPathInTabs(g_state.recentFiles[idx]);
             return 0;
         }
         switch (cmd)
@@ -610,6 +681,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             break;
         case IDM_FILE_CLOSETAB:
             CloseCurrentDocumentTab();
+            break;
+        case IDM_FILE_NEXTTAB:
+            SwitchToNextDocumentTab(false);
+            break;
+        case IDM_FILE_PREVTAB:
+            SwitchToNextDocumentTab(true);
             break;
         case IDM_FILE_SAVE:
             FileSave();
@@ -797,6 +874,35 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             SwitchToDocument(index);
             return 0;
         }
+        if (pnmh->hwndFrom == g_hwndTabs && pnmh->code == NM_RCLICK)
+        {
+            POINT pt{};
+            GetCursorPos(&pt);
+            POINT local = pt;
+            ScreenToClient(g_hwndTabs, &local);
+            TCHITTESTINFO hit{};
+            hit.pt = local;
+            int index = TabCtrl_HitTest(g_hwndTabs, &hit);
+            if (index >= 0)
+                SwitchToDocument(index);
+
+            HMENU hPopup = CreatePopupMenu();
+            if (!hPopup)
+                return 0;
+
+            const auto &lang = GetLangStrings();
+            AppendMenuW(hPopup, MF_STRING, IDM_FILE_NEW, MenuLabelForContext(lang.menuNew).c_str());
+            AppendMenuW(hPopup, MF_STRING, IDM_FILE_CLOSETAB, L"Close Tab");
+            if (g_documents.size() <= 1)
+                EnableMenuItem(hPopup, IDM_FILE_CLOSETAB, MF_BYCOMMAND | MF_GRAYED);
+
+            UINT cmd = TrackPopupMenu(hPopup, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD,
+                                      pt.x, pt.y, 0, hwnd, nullptr);
+            DestroyMenu(hPopup);
+            if (cmd != 0)
+                SendMessageW(hwnd, WM_COMMAND, MAKEWPARAM(cmd, 0), 0);
+            return 0;
+        }
         if (pnmh->hwndFrom == g_hwndStatus && pnmh->code == NM_CUSTOMDRAW)
         {
             if (IsDarkMode())
@@ -973,8 +1079,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR lpCmdLine, int nCmdSh
         std::wstring path = lpCmdLine;
         if (path.front() == L'"' && path.back() == L'"')
             path = path.substr(1, path.size() - 2);
-        LoadFile(path);
-        SyncDocumentFromState(g_activeDocument, true);
+        OpenPathInTabs(path);
     }
 
     MSG msg;
