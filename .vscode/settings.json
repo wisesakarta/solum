@@ -1,9 +1,0 @@
-{
-  "cmake.configureOnOpen": false,
-  "cmake.buildDirectory": "${workspaceFolder}/build/${buildType}",
-  "cmake.sourceDirectory": "${workspaceFolder}",
-  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
-  "files.associations": {
-    "*.rc": "cpp"
-  }
-}
