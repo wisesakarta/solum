@@ -31,6 +31,11 @@ jobs:
       - name: Build
         run: cmake --build build-${{ matrix.arch }} --config Release
 
+      - name: Prepare Arch-Named Binary
+        shell: pwsh
+        run: |
+          Copy-Item "build-${{ matrix.arch }}/Release/saka-note.exe" "build-${{ matrix.arch }}/saka-note-${{ matrix.arch }}.exe" -Force
+
       - name: Run Performance Benchmark Gate (x64)
         if: matrix.arch == 'x64'
         shell: pwsh
@@ -71,7 +76,7 @@ jobs:
           name: saka-note-${{ matrix.arch }}
           if-no-files-found: ignore
           path: |
-            build-${{ matrix.arch }}/Release/saka-note.exe
+            build-${{ matrix.arch }}/saka-note-${{ matrix.arch }}.exe
             build-${{ matrix.arch }}/saka-note-${{ matrix.arch }}-portable.zip
             build-${{ matrix.arch }}/saka-note-*.exe
             build-${{ matrix.arch }}/benchmark-reports/benchmark-*.txt
@@ -94,7 +99,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/**/saka-note.exe
             artifacts/**/saka-note-*.exe
             artifacts/**/saka-note-*-portable.zip
             artifacts/**/benchmark-*.txt
