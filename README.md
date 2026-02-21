@@ -36,6 +36,11 @@ Detail atribusi dan log modifikasi:
 - Built-in performance benchmark (`--benchmark-ci`). / Benchmark performa bawaan (`--benchmark-ci`).
 - Large file mode (automatic behavior for big files). / Mode file besar (perilaku otomatis untuk file besar).
 
+## Roadmap
+
+- See detailed roadmap: `docs/roadmap.md`.
+- Lihat roadmap detail: `docs/roadmap.md`.
+
 ## Requirements / Kebutuhan
 
 - Windows 7 SP1+ (Windows 10/11 recommended). / Windows 7 SP1+ (Windows 10/11 disarankan).
