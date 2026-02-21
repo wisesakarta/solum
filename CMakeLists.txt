@@ -42,7 +42,7 @@ add_executable(saka-note WIN32
 )
 
 target_include_directories(saka-note PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/modules)
-target_compile_definitions(saka-note PRIVATE UNICODE _UNICODE)
+target_compile_definitions(saka-note PRIVATE UNICODE _UNICODE NOMINMAX)
 
 target_link_libraries(saka-note PRIVATE
     comctl32
