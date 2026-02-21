@@ -59,6 +59,12 @@ target_link_libraries(saka-note PRIVATE
     winhttp
 )
 
+if(MSVC)
+    # Manifest already embedded via src/notepad.rc.
+    # Disable linker auto-manifest to avoid duplicate MANIFEST resource (type 1).
+    target_link_options(saka-note PRIVATE /MANIFEST:NO)
+endif()
+
 if(NOT MSVC)
     target_link_options(saka-note PRIVATE -mwindows -municode)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
