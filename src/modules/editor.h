@@ -17,6 +17,7 @@ void ConfigureEditorControl(HWND hwnd);
 void ApplyFont();
 void ApplyZoom();
 void ApplyWordWrap();
+void ApplyEditorViewportPadding();
 void DeleteWordBackward();
 void DeleteWordForward();
 LRESULT CALLBACK EditorSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);

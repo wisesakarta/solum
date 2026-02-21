@@ -73,6 +73,7 @@ struct LangStrings
     std::wstring menuHelp;
     std::wstring menuAbout;
     std::wstring menuCheckUpdates;
+    std::wstring menuRunBenchmark;
 
     std::wstring menuLanguage;
     std::wstring menuLangEnglish;
@@ -102,6 +103,7 @@ struct LangStrings
 
     std::wstring statusLn;
     std::wstring statusCol;
+    std::wstring statusLargeFile;
 
     std::wstring encodingUTF8;
     std::wstring encodingUTF8BOM;

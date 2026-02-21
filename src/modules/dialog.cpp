@@ -23,6 +23,45 @@ constexpr COLORREF kDialogDarkBg = RGB(45, 45, 45);
 constexpr COLORREF kDialogDarkEditBg = RGB(30, 30, 30);
 constexpr COLORREF kDialogDarkText = RGB(240, 240, 240);
 
+int ScaleDialogPx(int px)
+{
+    HWND ref = g_hwndMain ? g_hwndMain : GetDesktopWindow();
+    HDC hdc = GetDC(ref);
+    if (!hdc)
+        return px;
+    const int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
+    ReleaseDC(ref, hdc);
+    return MulDiv(px, dpi, 96);
+}
+
+int MeasureDialogTextWidth(const std::wstring &text)
+{
+    HWND ref = g_hwndMain ? g_hwndMain : GetDesktopWindow();
+    HDC hdc = GetDC(ref);
+    if (!hdc)
+        return 0;
+
+    HFONT hFont = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+    HGDIOBJ oldFont = SelectObject(hdc, hFont);
+    SIZE size{};
+    GetTextExtentPoint32W(hdc, text.c_str(), static_cast<int>(text.size()), &size);
+    SelectObject(hdc, oldFont);
+    ReleaseDC(ref, hdc);
+    return size.cx;
+}
+
+UINT_PTR CALLBACK FontDialogHookProc(HWND hDlg, UINT msg, WPARAM, LPARAM)
+{
+    if (msg == WM_INITDIALOG)
+    {
+        HWND hRoot = GetAncestor(hDlg, GA_ROOT);
+        if (!hRoot)
+            hRoot = hDlg;
+        SetTitleBarDark(hRoot, IsDarkMode() ? TRUE : FALSE);
+    }
+    return FALSE;
+}
+
 void ApplyDialogTheme(HWND hDlg)
 {
     if (!hDlg)
@@ -393,7 +432,8 @@ void FormatFont()
     cf.lStructSize = sizeof(cf);
     cf.hwndOwner = g_hwndMain;
     cf.lpLogFont = &lf;
-    cf.Flags = CF_SCREENFONTS | CF_INITTOLOGFONTSTRUCT | CF_FORCEFONTEXIST | CF_BOTH;
+    cf.Flags = CF_SCREENFONTS | CF_INITTOLOGFONTSTRUCT | CF_FORCEFONTEXIST | CF_BOTH | CF_ENABLEHOOK;
+    cf.lpfnHook = FontDialogHookProc;
     if (ChooseFontW(&cf))
     {
         g_state.fontName = lf.lfFaceName;
@@ -432,26 +472,78 @@ void ViewTransparency()
     int pct = g_state.windowOpacity * 100 / 255;
     wchar_t buf[32];
     wsprintfW(buf, L"%d", pct);
-    HWND hDlg = CreateWindowExW(WS_EX_DLGMODALFRAME, L"#32770", lang.dialogTransparency.c_str(),
-                                WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE, 300, 300, 280, 110,
+
+    const int margin = ScaleDialogPx(18);
+    const int gap = ScaleDialogPx(12);
+    const int minLabelW = ScaleDialogPx(100);
+    const int measuredLabelW = MeasureDialogTextWidth(lang.dialogOpacityLabel) + ScaleDialogPx(8);
+    const int labelW = std::max(minLabelW, measuredLabelW);
+    const int labelH = ScaleDialogPx(20);
+    const int inputW = ScaleDialogPx(96);
+    const int inputH = ScaleDialogPx(24);
+    const int topPad = ScaleDialogPx(20);
+    const int rowGap = ScaleDialogPx(30);
+    const int buttonW = ScaleDialogPx(84);
+    const int buttonH = ScaleDialogPx(30);
+    const int buttonGap = ScaleDialogPx(10);
+    const int bottomPad = ScaleDialogPx(20);
+
+    const int clientW = std::max(ScaleDialogPx(360), margin + labelW + gap + inputW + margin);
+    const int clientH = topPad + std::max(labelH, inputH) + rowGap + buttonH + bottomPad;
+
+    const DWORD style = WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE;
+    const DWORD exStyle = WS_EX_DLGMODALFRAME;
+    RECT windowRect = {0, 0, clientW, clientH};
+    AdjustWindowRectEx(&windowRect, style, FALSE, exStyle);
+    const int windowW = windowRect.right - windowRect.left;
+    const int windowH = windowRect.bottom - windowRect.top;
+
+    int x = 300;
+    int y = 300;
+    RECT ownerRect{};
+    if (g_hwndMain && GetWindowRect(g_hwndMain, &ownerRect))
+    {
+        x = ownerRect.left + ((ownerRect.right - ownerRect.left) - windowW) / 2;
+        y = ownerRect.top + ((ownerRect.bottom - ownerRect.top) - windowH) / 2;
+    }
+
+    HWND hDlg = CreateWindowExW(exStyle, L"#32770", lang.dialogTransparency.c_str(),
+                                style, x, y, windowW, windowH,
                                 g_hwndMain, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!hDlg)
         return;
+
+    const int rowY = topPad;
+    const int labelY = rowY + std::max(0, (inputH - labelH) / 2);
+    const int inputX = margin + labelW + gap;
+    const int buttonY = clientH - bottomPad - buttonH;
+    const int cancelX = clientW - margin - buttonW;
+    const int okX = cancelX - buttonGap - buttonW;
+
     HFONT hFont = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
-    CreateWindowExW(0, L"STATIC", lang.dialogOpacityLabel.c_str(), WS_CHILD | WS_VISIBLE, 10, 18, 110, 20, hDlg, nullptr, nullptr, nullptr);
-    HWND hEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", buf, WS_CHILD | WS_VISIBLE | ES_NUMBER, 125, 15, 60, 22, hDlg, reinterpret_cast<HMENU>(1001), nullptr, nullptr);
-    CreateWindowExW(0, L"BUTTON", lang.dialogOK.c_str(), WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 50, 50, 70, 26, hDlg, reinterpret_cast<HMENU>(IDOK), nullptr, nullptr);
-    CreateWindowExW(0, L"BUTTON", lang.dialogCancel.c_str(), WS_CHILD | WS_VISIBLE, 130, 50, 70, 26, hDlg, reinterpret_cast<HMENU>(IDCANCEL), nullptr, nullptr);
+    CreateWindowExW(0, L"STATIC", lang.dialogOpacityLabel.c_str(), WS_CHILD | WS_VISIBLE, margin, labelY, labelW, labelH, hDlg, nullptr, nullptr, nullptr);
+    HWND hEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", buf, WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_AUTOHSCROLL | ES_RIGHT,
+                                 inputX, rowY, inputW, inputH, hDlg, reinterpret_cast<HMENU>(1001), nullptr, nullptr);
+    CreateWindowExW(0, L"BUTTON", lang.dialogOK.c_str(), WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+                    okX, buttonY, buttonW, buttonH, hDlg, reinterpret_cast<HMENU>(IDOK), nullptr, nullptr);
+    CreateWindowExW(0, L"BUTTON", lang.dialogCancel.c_str(), WS_CHILD | WS_VISIBLE,
+                    cancelX, buttonY, buttonW, buttonH, hDlg, reinterpret_cast<HMENU>(IDCANCEL), nullptr, nullptr);
     for (HWND h = GetWindow(hDlg, GW_CHILD); h; h = GetWindow(h, GW_HWNDNEXT))
         SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
     SetWindowLongPtrW(hDlg, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(TransparencyDlgProc));
     ApplyDialogTheme(hDlg);
     SetFocus(hEdit);
     MSG msg;
+    int quitCode = -1;
     while (IsWindow(hDlg))
     {
         BOOL gm = GetMessageW(&msg, nullptr, 0, 0);
-        if (gm <= 0)
+        if (gm == 0)
+        {
+            quitCode = static_cast<int>(msg.wParam);
+            break;
+        }
+        if (gm < 0)
             break;
         if (msg.hwnd == hDlg && msg.message == WM_COMMAND)
         {
@@ -487,6 +579,8 @@ void ViewTransparency()
     }
     if (IsWindow(hDlg))
         DestroyWindow(hDlg);
+    if (quitCode >= 0)
+        PostQuitMessage(quitCode);
 }
 
 void HelpAbout()

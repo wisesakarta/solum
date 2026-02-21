@@ -3,7 +3,7 @@
 #include "lang.h"
 
 inline LangStrings g_langEN = {
-    L"Notepad",
+    L"Saka Note",
     L"Untitled",
 
     L"&File",
@@ -63,8 +63,9 @@ inline LangStrings g_langEN = {
     L"Always on &Top",
 
     L"&Help",
-    L"&About Notepad",
+    L"&About Saka Note",
     L"&Check for Updates",
+    L"Run &Performance Benchmark",
 
     L"&Language",
     L"&English",
@@ -90,10 +91,11 @@ inline LangStrings g_langEN = {
     L"Cannot open file.",
     L"Cannot save file.",
     L"Error",
-    L"Legacy Notepad v1.2.0\n\nA fast, lightweight text editor.\n\nBuilt with C++ and Win32 API.\n", //\nModify by 0x2o.net",
+    L"Saka Note v1.3.0\n\nBuilt by Saka Studio & Engineering.\nA lightweight Win32 text editor focused on speed, stability, and clarity.\n", //\nModify by 0x2o.net",
 
     L" Ln ",
     L", Col ",
+    L" [Large file mode]",
 
     L"UTF-8",
     L"UTF-8 with BOM",

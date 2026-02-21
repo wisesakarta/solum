@@ -5,11 +5,16 @@
 
 static LangID g_currentLang = LangID::EN;
 static const LangStrings *g_currentStrings = &g_langEN;
+static constexpr const wchar_t *kLangSettingsKey = L"Software\\SakaNote";
+static constexpr const wchar_t *kLegacyLangSettingsKey = L"Software\\LegacyNotepad";
 
 LangID LoadLanguageSetting()
 {
     HKEY hKey;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\LegacyNotepad", 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+    LONG openResult = RegOpenKeyExW(HKEY_CURRENT_USER, kLangSettingsKey, 0, KEY_READ, &hKey);
+    if (openResult != ERROR_SUCCESS)
+        openResult = RegOpenKeyExW(HKEY_CURRENT_USER, kLegacyLangSettingsKey, 0, KEY_READ, &hKey);
+    if (openResult == ERROR_SUCCESS)
     {
         DWORD value = 0, size = sizeof(value);
         if (RegQueryValueExW(hKey, L"Language", nullptr, nullptr, reinterpret_cast<LPBYTE>(&value), &size) == ERROR_SUCCESS)
@@ -27,7 +32,7 @@ LangID LoadLanguageSetting()
 void SaveLanguageSetting()
 {
     HKEY hKey;
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\LegacyNotepad", 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS)
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, kLangSettingsKey, 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS)
     {
         DWORD value = static_cast<DWORD>(g_currentLang);
         RegSetValueExW(hKey, L"Language", 0, REG_DWORD, reinterpret_cast<const BYTE *>(&value), sizeof(value));

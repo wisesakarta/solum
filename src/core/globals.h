@@ -35,3 +35,4 @@ extern PAGESETUPDLGW g_pageSetup;
 extern std::wstring g_statusTexts[4];
 extern HICON g_hCustomIcon;
 extern std::wstring g_editorClassName;
+extern HMODULE g_hRichEditModule;

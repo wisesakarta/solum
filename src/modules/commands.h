@@ -37,3 +37,5 @@ void ViewChooseSystemIcon();
 void ViewResetIcon();
 bool ApplyCustomIcon(const std::wstring &iconPath, int iconIndex, bool showError = true);
 void HelpCheckUpdates();
+bool RunPerformanceBenchmark(bool interactive, std::wstring *outReportPath = nullptr, bool *outAllPassed = nullptr, bool *outAllExecuted = nullptr);
+void HelpRunPerformanceBenchmark();

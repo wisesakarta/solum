@@ -107,7 +107,8 @@ void UpdateMenuStrings()
     if (hHelpMenu)
     {
         ModifyMenuW(hHelpMenu, 0, MF_BYPOSITION | MF_STRING, IDM_HELP_CHECKUPDATES, lang.menuCheckUpdates.c_str());
-        ModifyMenuW(hHelpMenu, 1, MF_BYPOSITION | MF_STRING, IDM_HELP_ABOUT, lang.menuAbout.c_str());
+        ModifyMenuW(hHelpMenu, IDM_HELP_PERF_BENCHMARK, MF_BYCOMMAND | MF_STRING, IDM_HELP_PERF_BENCHMARK, lang.menuRunBenchmark.c_str());
+        ModifyMenuW(hHelpMenu, IDM_HELP_ABOUT, MF_BYCOMMAND | MF_STRING, IDM_HELP_ABOUT, lang.menuAbout.c_str());
     }
 
     DrawMenuBar(g_hwndMain);

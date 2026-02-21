@@ -14,6 +14,41 @@
 #include "resource.h"
 #include <shlwapi.h>
 #include <algorithm>
+#include <cwctype>
+
+static bool ShouldUseLargeFileMode(size_t bytes)
+{
+    return bytes >= LARGE_FILE_MODE_THRESHOLD_BYTES;
+}
+
+static std::wstring NormalizeRecentPath(const std::wstring &path)
+{
+    if (path.empty())
+        return {};
+
+    wchar_t fullPath[MAX_PATH] = {};
+    DWORD len = GetFullPathNameW(path.c_str(), MAX_PATH, fullPath, nullptr);
+    std::wstring normalized = (len > 0 && len < MAX_PATH) ? std::wstring(fullPath) : path;
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(), towlower);
+    return normalized;
+}
+
+static std::wstring ToWin32IoPath(const std::wstring &path)
+{
+    if (path.empty())
+        return path;
+    if (path.rfind(L"\\\\?\\", 0) == 0)
+        return path;
+
+    if (path.rfind(L"\\\\", 0) == 0)
+        return L"\\\\?\\UNC\\" + path.substr(2);
+
+    if (path.size() >= MAX_PATH && path.size() > 2 && path[1] == L':' &&
+        (path[2] == L'\\' || path[2] == L'/'))
+        return L"\\\\?\\" + path;
+
+    return path;
+}
 
 const wchar_t *GetEncodingName(Encoding e)
 {
@@ -212,34 +247,62 @@ std::vector<BYTE> EncodeText(const std::wstring &text, Encoding enc, LineEnding 
     return result;
 }
 
-void LoadFile(const std::wstring &path)
+bool LoadFile(const std::wstring &path)
 {
     const auto &lang = GetLangStrings();
-    HANDLE hFile = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+    const std::wstring ioPath = ToWin32IoPath(path);
+    HANDLE hFile = CreateFileW(ioPath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (hFile == INVALID_HANDLE_VALUE)
     {
         MessageBoxW(g_hwndMain, lang.msgCannotOpenFile.c_str(), lang.msgError.c_str(), MB_ICONERROR);
-        return;
+        return false;
     }
-    DWORD size = GetFileSize(hFile, nullptr);
-    if (size == INVALID_FILE_SIZE && GetLastError() != NO_ERROR)
+    LARGE_INTEGER fileSize = {};
+    if (!GetFileSizeEx(hFile, &fileSize) || fileSize.QuadPart < 0)
     {
         CloseHandle(hFile);
         MessageBoxW(g_hwndMain, lang.msgCannotOpenFile.c_str(), lang.msgError.c_str(), MB_ICONERROR);
-        return;
+        return false;
     }
+    if (fileSize.QuadPart > static_cast<LONGLONG>(MAXDWORD))
+    {
+        CloseHandle(hFile);
+        MessageBoxW(g_hwndMain, L"File is too large to open in this build.", lang.msgError.c_str(), MB_ICONERROR);
+        return false;
+    }
+
+    const DWORD size = static_cast<DWORD>(fileSize.QuadPart);
     std::vector<BYTE> data(size);
-    DWORD read = 0;
-    if (size > 0 && (!ReadFile(hFile, data.data(), size, &read, nullptr) || read != size))
+    DWORD totalRead = 0;
+    while (totalRead < size)
     {
-        CloseHandle(hFile);
-        MessageBoxW(g_hwndMain, lang.msgCannotOpenFile.c_str(), lang.msgError.c_str(), MB_ICONERROR);
-        return;
+        DWORD chunkRead = 0;
+        if (!ReadFile(hFile, data.data() + totalRead, size - totalRead, &chunkRead, nullptr))
+        {
+            CloseHandle(hFile);
+            MessageBoxW(g_hwndMain, lang.msgCannotOpenFile.c_str(), lang.msgError.c_str(), MB_ICONERROR);
+            return false;
+        }
+        if (chunkRead == 0)
+        {
+            CloseHandle(hFile);
+            MessageBoxW(g_hwndMain, lang.msgCannotOpenFile.c_str(), lang.msgError.c_str(), MB_ICONERROR);
+            return false;
+        }
+        totalRead += chunkRead;
     }
     CloseHandle(hFile);
     auto [enc, le] = DetectEncoding(data);
     std::wstring text = DecodeText(data, enc);
+
+    const bool largeFileMode = ShouldUseLargeFileMode(static_cast<size_t>(size));
+    const bool wrapModeChanged = (g_state.largeFileMode != largeFileMode);
+    g_state.largeFileMode = largeFileMode;
+    g_state.largeFileBytes = static_cast<size_t>(size);
+    if (wrapModeChanged)
+        ApplyWordWrap();
+
     SetEditorText(text);
     g_state.filePath = path;
     g_state.encoding = enc;
@@ -248,6 +311,7 @@ void LoadFile(const std::wstring &path)
     UpdateTitle();
     UpdateStatus();
     AddRecentFile(path);
+    return true;
 }
 
 void SaveToPath(const std::wstring &path)
@@ -255,22 +319,48 @@ void SaveToPath(const std::wstring &path)
     const auto &lang = GetLangStrings();
     std::wstring text = GetEditorText();
     std::vector<BYTE> data = EncodeText(text, g_state.encoding, g_state.lineEnding);
-    HANDLE hFile = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr,
+    if (data.size() > static_cast<size_t>(MAXDWORD))
+    {
+        MessageBoxW(g_hwndMain, L"File is too large to save in this build.", lang.msgError.c_str(), MB_ICONERROR);
+        return;
+    }
+
+    const std::wstring ioPath = ToWin32IoPath(path);
+    HANDLE hFile = CreateFileW(ioPath.c_str(), GENERIC_WRITE, 0, nullptr,
                                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (hFile == INVALID_HANDLE_VALUE)
     {
         MessageBoxW(g_hwndMain, lang.msgCannotSaveFile.c_str(), lang.msgError.c_str(), MB_ICONERROR);
         return;
     }
-    DWORD written = 0;
     const DWORD bytesToWrite = static_cast<DWORD>(data.size());
-    if (bytesToWrite > 0 && (!WriteFile(hFile, data.data(), bytesToWrite, &written, nullptr) || written != bytesToWrite))
+    DWORD totalWritten = 0;
+    while (totalWritten < bytesToWrite)
     {
-        CloseHandle(hFile);
-        MessageBoxW(g_hwndMain, lang.msgCannotSaveFile.c_str(), lang.msgError.c_str(), MB_ICONERROR);
-        return;
+        DWORD chunkWritten = 0;
+        if (!WriteFile(hFile, data.data() + totalWritten, bytesToWrite - totalWritten, &chunkWritten, nullptr))
+        {
+            CloseHandle(hFile);
+            MessageBoxW(g_hwndMain, lang.msgCannotSaveFile.c_str(), lang.msgError.c_str(), MB_ICONERROR);
+            return;
+        }
+        if (chunkWritten == 0)
+        {
+            CloseHandle(hFile);
+            MessageBoxW(g_hwndMain, lang.msgCannotSaveFile.c_str(), lang.msgError.c_str(), MB_ICONERROR);
+            return;
+        }
+        totalWritten += chunkWritten;
     }
     CloseHandle(hFile);
+
+    const bool largeFileMode = ShouldUseLargeFileMode(static_cast<size_t>(bytesToWrite));
+    const bool wrapModeChanged = (g_state.largeFileMode != largeFileMode);
+    g_state.largeFileMode = largeFileMode;
+    g_state.largeFileBytes = static_cast<size_t>(bytesToWrite);
+    if (wrapModeChanged)
+        ApplyWordWrap();
+
     g_state.filePath = path;
     g_state.modified = false;
     UpdateTitle();
@@ -279,7 +369,13 @@ void SaveToPath(const std::wstring &path)
 
 void AddRecentFile(const std::wstring &path)
 {
-    auto it = std::find(g_state.recentFiles.begin(), g_state.recentFiles.end(), path);
+    const std::wstring normalizedPath = NormalizeRecentPath(path);
+    if (normalizedPath.empty())
+        return;
+
+    auto it = std::find_if(g_state.recentFiles.begin(), g_state.recentFiles.end(),
+                           [&](const std::wstring &existing)
+                           { return NormalizeRecentPath(existing) == normalizedPath; });
     if (it != g_state.recentFiles.end())
         g_state.recentFiles.erase(it);
     g_state.recentFiles.push_front(path);

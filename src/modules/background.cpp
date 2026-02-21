@@ -13,6 +13,20 @@
 #include <commdlg.h>
 #include <algorithm>
 
+namespace
+{
+int ScaleBackgroundPx(int px)
+{
+    HWND ref = g_hwndMain ? g_hwndMain : GetDesktopWindow();
+    HDC hdc = GetDC(ref);
+    if (!hdc)
+        return px;
+    const int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
+    ReleaseDC(ref, hdc);
+    return MulDiv(px, dpi, 96);
+}
+}
+
 void LoadBackgroundImage(const std::wstring &path)
 {
     if (g_bgImage)
@@ -275,11 +289,35 @@ static INT_PTR CALLBACK OpacityDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARA
     {
     case WM_INITDIALOG:
     {
+        const int margin = ScaleBackgroundPx(16);
+        const int gap = ScaleBackgroundPx(12);
+        const int labelW = ScaleBackgroundPx(110);
+        const int labelH = ScaleBackgroundPx(20);
+        const int inputW = ScaleBackgroundPx(88);
+        const int inputH = ScaleBackgroundPx(24);
+        const int topPad = ScaleBackgroundPx(20);
+        const int buttonW = ScaleBackgroundPx(84);
+        const int buttonH = ScaleBackgroundPx(30);
+        const int buttonGap = ScaleBackgroundPx(10);
+
+        RECT rcClient{};
+        GetClientRect(hDlg, &rcClient);
+
+        const int rowY = topPad;
+        const int labelY = rowY + std::max(0, (inputH - labelH) / 2);
+        const int inputX = margin + labelW + gap;
+        const int buttonY = rcClient.bottom - ScaleBackgroundPx(20) - buttonH;
+        const int cancelX = rcClient.right - margin - buttonW;
+        const int okX = cancelX - buttonGap - buttonW;
+
         HFONT hFont = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
-        CreateWindowExW(0, L"STATIC", L"Opacity (0-100%):", WS_CHILD | WS_VISIBLE, 10, 15, 110, 20, hDlg, nullptr, nullptr, nullptr);
-        hEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_NUMBER, 125, 12, 60, 22, hDlg, reinterpret_cast<HMENU>(1001), nullptr, nullptr);
-        CreateWindowExW(0, L"BUTTON", L"OK", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 55, 50, 70, 26, hDlg, reinterpret_cast<HMENU>(IDOK), nullptr, nullptr);
-        CreateWindowExW(0, L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE, 135, 50, 70, 26, hDlg, reinterpret_cast<HMENU>(IDCANCEL), nullptr, nullptr);
+        CreateWindowExW(0, L"STATIC", L"Opacity (0-100%):", WS_CHILD | WS_VISIBLE, margin, labelY, labelW, labelH, hDlg, nullptr, nullptr, nullptr);
+        hEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_RIGHT | ES_AUTOHSCROLL,
+                                inputX, rowY, inputW, inputH, hDlg, reinterpret_cast<HMENU>(1001), nullptr, nullptr);
+        CreateWindowExW(0, L"BUTTON", L"OK", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+                        okX, buttonY, buttonW, buttonH, hDlg, reinterpret_cast<HMENU>(IDOK), nullptr, nullptr);
+        CreateWindowExW(0, L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE,
+                        cancelX, buttonY, buttonW, buttonH, hDlg, reinterpret_cast<HMENU>(IDCANCEL), nullptr, nullptr);
         for (HWND h = GetWindow(hDlg, GW_CHILD); h; h = GetWindow(h, GW_HWNDNEXT))
             SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
         int pct = g_state.background.opacity * 100 / 255;
@@ -318,8 +356,39 @@ static INT_PTR CALLBACK OpacityDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARA
 
 void ViewBackgroundOpacity()
 {
-    HWND hDlg = CreateWindowExW(WS_EX_DLGMODALFRAME, L"#32770", L"Background Opacity",
-                                WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE, 300, 300, 270, 120,
+    const DWORD style = WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE;
+    const DWORD exStyle = WS_EX_DLGMODALFRAME;
+
+    const int margin = ScaleBackgroundPx(16);
+    const int gap = ScaleBackgroundPx(12);
+    const int labelW = ScaleBackgroundPx(110);
+    const int labelH = ScaleBackgroundPx(20);
+    const int inputW = ScaleBackgroundPx(88);
+    const int inputH = ScaleBackgroundPx(24);
+    const int topPad = ScaleBackgroundPx(20);
+    const int rowGap = ScaleBackgroundPx(30);
+    const int buttonH = ScaleBackgroundPx(30);
+    const int bottomPad = ScaleBackgroundPx(20);
+
+    const int clientW = std::max(ScaleBackgroundPx(340), margin + labelW + gap + inputW + margin);
+    const int clientH = topPad + std::max(labelH, inputH) + rowGap + buttonH + bottomPad;
+
+    RECT windowRect = {0, 0, clientW, clientH};
+    AdjustWindowRectEx(&windowRect, style, FALSE, exStyle);
+    const int windowW = windowRect.right - windowRect.left;
+    const int windowH = windowRect.bottom - windowRect.top;
+
+    int x = 300;
+    int y = 300;
+    RECT ownerRect{};
+    if (g_hwndMain && GetWindowRect(g_hwndMain, &ownerRect))
+    {
+        x = ownerRect.left + ((ownerRect.right - ownerRect.left) - windowW) / 2;
+        y = ownerRect.top + ((ownerRect.bottom - ownerRect.top) - windowH) / 2;
+    }
+
+    HWND hDlg = CreateWindowExW(exStyle, L"#32770", L"Background Opacity",
+                                style, x, y, windowW, windowH,
                                 g_hwndMain, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!hDlg)
         return;
@@ -327,8 +396,18 @@ void ViewBackgroundOpacity()
     OpacityDlgProc(hDlg, WM_INITDIALOG, 0, 0);
     EnableWindow(g_hwndMain, FALSE);
     MSG msg;
-    while (GetMessageW(&msg, nullptr, 0, 0))
+    int quitCode = -1;
+    for (;;)
     {
+        BOOL gm = GetMessageW(&msg, nullptr, 0, 0);
+        if (gm == 0)
+        {
+            quitCode = static_cast<int>(msg.wParam);
+            break;
+        }
+        if (gm < 0)
+            break;
+
         if (!IsWindow(hDlg))
             break;
         if (msg.message == WM_KEYDOWN && msg.wParam == VK_RETURN)
@@ -359,4 +438,6 @@ void ViewBackgroundOpacity()
     }
     InvalidateRect(g_hwndEditor, nullptr, TRUE);
     SetForegroundWindow(g_hwndMain);
+    if (quitCode >= 0)
+        PostQuitMessage(quitCode);
 }

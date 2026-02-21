@@ -50,6 +50,26 @@ static DWORD CALLBACK StreamOutCallback(DWORD_PTR dwCookie, LPBYTE pbBuff, LONG 
     return 0;
 }
 
+static bool IsEditorWrapEnabled()
+{
+    return g_state.wordWrap && !g_state.largeFileMode;
+}
+
+static int ScaleEditorPx(int px)
+{
+    HWND ref = g_hwndEditor ? g_hwndEditor : g_hwndMain;
+    if (!ref)
+        return px;
+
+    HDC hdc = GetDC(ref);
+    if (!hdc)
+        return px;
+
+    const int dpi = GetDeviceCaps(hdc, LOGPIXELSY);
+    ReleaseDC(ref, hdc);
+    return MulDiv(px, dpi > 0 ? dpi : 96, 96);
+}
+
 std::wstring GetEditorText()
 {
     std::wstring text;
@@ -84,6 +104,46 @@ void ConfigureEditorControl(HWND hwnd)
     // Keep RichEdit in plain-text mode and disable URL auto-detection for security/perf.
     SendMessageW(hwnd, EM_SETTEXTMODE, TM_PLAINTEXT | TM_MULTILEVELUNDO | TM_MULTICODEPAGE, 0);
     SendMessageW(hwnd, EM_AUTOURLDETECT, FALSE, 0);
+}
+
+void ApplyEditorViewportPadding()
+{
+    if (!g_hwndEditor)
+        return;
+
+    RECT rc{};
+    GetClientRect(g_hwndEditor, &rc);
+    if (rc.right <= rc.left || rc.bottom <= rc.top)
+        return;
+
+    int padLeft = ScaleEditorPx(8);
+    int padRight = ScaleEditorPx(8);
+    int padTop = ScaleEditorPx(12);
+    int padBottom = ScaleEditorPx(6);
+
+    if ((rc.right - rc.left) <= (padLeft + padRight + 4))
+    {
+        padLeft = 2;
+        padRight = 2;
+    }
+    if ((rc.bottom - rc.top) <= (padTop + padBottom + 4))
+    {
+        padTop = 2;
+        padBottom = 2;
+    }
+
+    RECT formatRect{};
+    formatRect.left = rc.left + padLeft;
+    formatRect.top = rc.top + padTop;
+    formatRect.right = rc.right - padRight;
+    formatRect.bottom = rc.bottom - padBottom;
+
+    if (formatRect.right <= formatRect.left)
+        formatRect.right = formatRect.left + 1;
+    if (formatRect.bottom <= formatRect.top)
+        formatRect.bottom = formatRect.top + 1;
+
+    SendMessageW(g_hwndEditor, EM_SETRECTNP, 0, reinterpret_cast<LPARAM>(&formatRect));
 }
 
 void ApplyFont()
@@ -123,8 +183,8 @@ void ApplyWordWrap()
     DWORD start = 0, end = 0;
     SendMessageW(g_hwndEditor, EM_GETSEL, reinterpret_cast<WPARAM>(&start), reinterpret_cast<LPARAM>(&end));
     DestroyWindow(g_hwndEditor);
-    DWORD style = WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_WANTRETURN | ES_NOHIDESEL;
-    if (!g_state.wordWrap)
+    DWORD style = WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | ES_NOHIDESEL;
+    if (!IsEditorWrapEnabled())
         style |= WS_HSCROLL | ES_AUTOHSCROLL;
     const wchar_t *editorClass = g_editorClassName.empty() ? MSFTEDIT_CLASS : g_editorClassName.c_str();
     g_hwndEditor = CreateWindowExW(0, editorClass, nullptr, style,
@@ -133,6 +193,7 @@ void ApplyWordWrap()
     ConfigureEditorControl(g_hwndEditor);
     SendMessageW(g_hwndEditor, EM_EXLIMITTEXT, 0, static_cast<LPARAM>(-1));
     SendMessageW(g_hwndEditor, EM_SETEVENTMASK, 0, ENM_CHANGE | ENM_SELCHANGE);
+    ApplyEditorViewportPadding();
     ApplyFont();
     ApplyTheme();
     SetEditorText(text);
@@ -187,7 +248,7 @@ LRESULT CALLBACK EditorSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
     switch (msg)
     {
     case WM_ERASEBKGND:
-        if (g_state.background.enabled && g_bgImage)
+        if (g_state.background.enabled && g_bgImage && !g_state.largeFileMode)
         {
             UpdateBackgroundBitmap(hwnd);
             if (g_bgBitmap)
@@ -205,7 +266,8 @@ LRESULT CALLBACK EditorSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         }
         break;
     case WM_SIZE:
-        if (g_state.background.enabled && g_bgImage && g_bgBitmap)
+        ApplyEditorViewportPadding();
+        if (g_state.background.enabled && g_bgImage && g_bgBitmap && !g_state.largeFileMode)
         {
             DeleteObject(g_bgBitmap);
             g_bgBitmap = nullptr;
@@ -227,7 +289,7 @@ LRESULT CALLBACK EditorSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
             if (GetKeyState(VK_CONTROL) & 0x8000)
                 return 0;
         }
-        if (g_state.background.enabled && g_bgImage)
+        if (g_state.background.enabled && g_bgImage && !g_state.largeFileMode)
         {
             LRESULT result = CallWindowProcW(g_origEditorProc, hwnd, msg, wParam, lParam);
             InvalidateRect(hwnd, nullptr, TRUE);
@@ -248,7 +310,7 @@ LRESULT CALLBACK EditorSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
                 return 0;
             }
         }
-        if (g_state.background.enabled && g_bgImage && (wParam == VK_BACK || wParam == VK_DELETE))
+        if (g_state.background.enabled && g_bgImage && !g_state.largeFileMode && (wParam == VK_BACK || wParam == VK_DELETE))
         {
             LRESULT result = CallWindowProcW(g_origEditorProc, hwnd, msg, wParam, lParam);
             InvalidateRect(hwnd, nullptr, TRUE);

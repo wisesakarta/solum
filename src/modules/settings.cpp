@@ -12,7 +12,8 @@
 #include <algorithm>
 #include <vector>
 
-#define SETTINGS_KEY L"Software\\LegacyNotepad"
+#define SETTINGS_KEY L"Software\\SakaNote"
+#define LEGACY_SETTINGS_KEY L"Software\\LegacyNotepad"
 #define FONT_NAME_VALUE L"FontName"
 #define FONT_SIZE_VALUE L"FontSize"
 #define FONT_WEIGHT_VALUE L"FontWeight"
@@ -31,16 +32,23 @@
 #define CUSTOM_ICON_PATH_VALUE L"CustomIconPath"
 #define CUSTOM_ICON_INDEX_VALUE L"CustomIconIndex"
 #define RECENT_FILES_VALUE L"RecentFiles"
+#define OPEN_TABS_VALUE L"OpenTabs"
+#define ACTIVE_TAB_INDEX_VALUE L"ActiveTabIndex"
+#define SETTINGS_SCHEMA_VERSION_VALUE L"SettingsSchemaVersion"
 #define WINDOW_X_VALUE L"WindowX"
 #define WINDOW_Y_VALUE L"WindowY"
 #define WINDOW_WIDTH_VALUE L"WindowWidth"
 #define WINDOW_HEIGHT_VALUE L"WindowHeight"
 #define WINDOW_MAXIMIZED_VALUE L"WindowMaximized"
+#define USE_TABS_VALUE L"UseTabs"
+#define STARTUP_BEHAVIOR_VALUE L"StartupBehavior"
+#define SETTINGS_SCHEMA_VERSION 2
 #define MIN_FONT_SIZE 8
 #define MAX_FONT_SIZE 72
 #define MIN_WINDOW_OPACITY 26
 #define MIN_WINDOW_SIZE 200
 #define MAX_WINDOW_SIZE 16384
+#define MAX_OPEN_TABS 64
 
 static bool ReadDwordValue(HKEY hKey, const wchar_t *name, DWORD &outValue)
 {
@@ -90,13 +98,66 @@ static void WriteIntValue(HKEY hKey, const wchar_t *name, int value)
     WriteDwordValue(hKey, name, static_cast<DWORD>(value));
 }
 
+static bool ReadMultiSzValue(HKEY hKey, const wchar_t *name, std::vector<std::wstring> &outValues, size_t maxCount)
+{
+    DWORD type = 0;
+    DWORD size = 0;
+    if (RegQueryValueExW(hKey, name, nullptr, &type, nullptr, &size) != ERROR_SUCCESS || type != REG_MULTI_SZ || size < sizeof(wchar_t) * 2)
+        return false;
+
+    std::vector<wchar_t> buffer(size / sizeof(wchar_t));
+    if (RegQueryValueExW(hKey, name, nullptr, &type, reinterpret_cast<LPBYTE>(buffer.data()), &size) != ERROR_SUCCESS)
+        return false;
+
+    outValues.clear();
+    const wchar_t *ptr = buffer.data();
+    while (*ptr != L'\0')
+    {
+        std::wstring value = ptr;
+        if (!value.empty())
+            outValues.push_back(value);
+        ptr += value.size() + 1;
+        if (outValues.size() >= maxCount)
+            break;
+    }
+    return true;
+}
+
+static void WriteMultiSzValue(HKEY hKey, const wchar_t *name, const std::vector<std::wstring> &values)
+{
+    std::vector<wchar_t> multiSz;
+    multiSz.reserve(2);
+    for (const auto &value : values)
+    {
+        if (value.empty())
+            continue;
+        multiSz.insert(multiSz.end(), value.begin(), value.end());
+        multiSz.push_back(L'\0');
+        if (multiSz.size() > 65535)
+            break;
+    }
+    if (multiSz.empty() || multiSz.back() != L'\0')
+        multiSz.push_back(L'\0');
+    multiSz.push_back(L'\0');
+
+    RegSetValueExW(hKey, name, 0, REG_MULTI_SZ,
+                   reinterpret_cast<const BYTE *>(multiSz.data()),
+                   static_cast<DWORD>(multiSz.size() * sizeof(wchar_t)));
+}
+
 void LoadFontSettings()
 {
     HKEY hKey;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, SETTINGS_KEY, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+    LONG openResult = RegOpenKeyExW(HKEY_CURRENT_USER, SETTINGS_KEY, 0, KEY_READ, &hKey);
+    if (openResult != ERROR_SUCCESS)
+        openResult = RegOpenKeyExW(HKEY_CURRENT_USER, LEGACY_SETTINGS_KEY, 0, KEY_READ, &hKey);
+    if (openResult == ERROR_SUCCESS)
     {
         std::wstring strValue;
         DWORD dwordValue = 0;
+        DWORD settingsSchemaVersion = 0;
+        bool hasSchemaVersion = ReadDwordValue(hKey, SETTINGS_SCHEMA_VERSION_VALUE, settingsSchemaVersion);
+        const bool shouldMigrateWordWrap = (!hasSchemaVersion || settingsSchemaVersion < SETTINGS_SCHEMA_VERSION);
 
         if (ReadStringValue(hKey, FONT_NAME_VALUE, strValue) && !strValue.empty())
             g_state.fontName = strValue;
@@ -118,6 +179,8 @@ void LoadFontSettings()
 
         if (ReadDwordValue(hKey, WORD_WRAP_VALUE, dwordValue))
             g_state.wordWrap = (dwordValue != 0);
+        if (shouldMigrateWordWrap)
+            g_state.wordWrap = true;
 
         if (ReadDwordValue(hKey, SHOW_STATUS_BAR_VALUE, dwordValue))
             g_state.showStatusBar = (dwordValue != 0);
@@ -172,26 +235,18 @@ void LoadFontSettings()
         if (ReadDwordValue(hKey, WINDOW_MAXIMIZED_VALUE, dwordValue))
             g_state.windowMaximized = (dwordValue != 0);
 
-        DWORD type = 0;
-        DWORD size = 0;
-        if (RegQueryValueExW(hKey, RECENT_FILES_VALUE, nullptr, &type, nullptr, &size) == ERROR_SUCCESS && type == REG_MULTI_SZ && size >= sizeof(wchar_t) * 2)
+        if (ReadDwordValue(hKey, USE_TABS_VALUE, dwordValue))
+            g_state.useTabs = (dwordValue != 0);
+
+        if (ReadDwordValue(hKey, STARTUP_BEHAVIOR_VALUE, dwordValue))
         {
-            std::vector<wchar_t> buffer(size / sizeof(wchar_t));
-            if (RegQueryValueExW(hKey, RECENT_FILES_VALUE, nullptr, &type, reinterpret_cast<LPBYTE>(buffer.data()), &size) == ERROR_SUCCESS)
-            {
-                g_state.recentFiles.clear();
-                const wchar_t *ptr = buffer.data();
-                while (*ptr != L'\0')
-                {
-                    std::wstring value = ptr;
-                    if (!value.empty())
-                        g_state.recentFiles.push_back(value);
-                    ptr += value.size() + 1;
-                    if (g_state.recentFiles.size() >= MAX_RECENT_FILES)
-                        break;
-                }
-            }
+            if (dwordValue <= static_cast<DWORD>(StartupBehavior::ResumeSaved))
+                g_state.startupBehavior = static_cast<StartupBehavior>(dwordValue);
         }
+
+        std::vector<std::wstring> recentFiles;
+        if (ReadMultiSzValue(hKey, RECENT_FILES_VALUE, recentFiles, MAX_RECENT_FILES))
+            g_state.recentFiles.assign(recentFiles.begin(), recentFiles.end());
 
         if (g_state.background.imagePath.empty())
             g_state.background.enabled = false;
@@ -224,30 +279,55 @@ void SaveFontSettings()
         WriteDwordValue(hKey, BG_OPACITY_VALUE, static_cast<DWORD>(g_state.background.opacity));
         WriteStringValue(hKey, CUSTOM_ICON_PATH_VALUE, g_state.customIconPath);
         WriteIntValue(hKey, CUSTOM_ICON_INDEX_VALUE, g_state.customIconIndex);
+        WriteDwordValue(hKey, SETTINGS_SCHEMA_VERSION_VALUE, SETTINGS_SCHEMA_VERSION);
         WriteIntValue(hKey, WINDOW_X_VALUE, g_state.windowX);
         WriteIntValue(hKey, WINDOW_Y_VALUE, g_state.windowY);
         WriteIntValue(hKey, WINDOW_WIDTH_VALUE, g_state.windowWidth);
         WriteIntValue(hKey, WINDOW_HEIGHT_VALUE, g_state.windowHeight);
         WriteDwordValue(hKey, WINDOW_MAXIMIZED_VALUE, g_state.windowMaximized ? 1 : 0);
+        WriteDwordValue(hKey, USE_TABS_VALUE, g_state.useTabs ? 1 : 0);
+        WriteDwordValue(hKey, STARTUP_BEHAVIOR_VALUE, static_cast<DWORD>(g_state.startupBehavior));
 
-        std::vector<wchar_t> multiSz;
-        multiSz.reserve(2);
-        for (const auto &file : g_state.recentFiles)
-        {
-            if (file.empty())
-                continue;
-            multiSz.insert(multiSz.end(), file.begin(), file.end());
-            multiSz.push_back(L'\0');
-            if (multiSz.size() > 65535)
-                break;
-        }
-        if (multiSz.empty() || multiSz.back() != L'\0')
-            multiSz.push_back(L'\0');
-        multiSz.push_back(L'\0');
-        RegSetValueExW(hKey, RECENT_FILES_VALUE, 0, REG_MULTI_SZ,
-                       reinterpret_cast<const BYTE *>(multiSz.data()),
-                       static_cast<DWORD>(multiSz.size() * sizeof(wchar_t)));
+        std::vector<std::wstring> recentFiles(g_state.recentFiles.begin(), g_state.recentFiles.end());
+        WriteMultiSzValue(hKey, RECENT_FILES_VALUE, recentFiles);
 
         RegCloseKey(hKey);
     }
+}
+
+void SaveOpenTabsSession(const std::vector<std::wstring> &tabPaths, int activeTabIndex)
+{
+    HKEY hKey;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, SETTINGS_KEY, 0, nullptr, 0, KEY_WRITE, nullptr, &hKey, nullptr) != ERROR_SUCCESS)
+        return;
+
+    WriteMultiSzValue(hKey, OPEN_TABS_VALUE, tabPaths);
+
+    DWORD persistedIndex = 0xFFFFFFFFu;
+    if (activeTabIndex >= 0 && activeTabIndex < static_cast<int>(tabPaths.size()))
+        persistedIndex = static_cast<DWORD>(activeTabIndex);
+    WriteDwordValue(hKey, ACTIVE_TAB_INDEX_VALUE, persistedIndex);
+
+    RegCloseKey(hKey);
+}
+
+void LoadOpenTabsSession(std::vector<std::wstring> &tabPaths, int &activeTabIndex)
+{
+    tabPaths.clear();
+    activeTabIndex = -1;
+
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, SETTINGS_KEY, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        return;
+
+    ReadMultiSzValue(hKey, OPEN_TABS_VALUE, tabPaths, MAX_OPEN_TABS);
+
+    DWORD activeIndexValue = 0;
+    if (ReadDwordValue(hKey, ACTIVE_TAB_INDEX_VALUE, activeIndexValue))
+    {
+        if (activeIndexValue != 0xFFFFFFFFu && activeIndexValue < tabPaths.size())
+            activeTabIndex = static_cast<int>(activeIndexValue);
+    }
+
+    RegCloseKey(hKey);
 }

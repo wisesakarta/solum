@@ -12,11 +12,29 @@
 #include "file.h"
 #include <commctrl.h>
 #include <shlwapi.h>
+#include <algorithm>
+
+static int ScaleMainPx(int px)
+{
+    HWND dpiSource = g_hwndMain ? g_hwndMain : g_hwndStatus;
+    if (!dpiSource)
+        return px;
+
+    HDC hdc = GetDC(dpiSource);
+    if (!hdc)
+        return px;
+
+    const int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
+    ReleaseDC(dpiSource, hdc);
+    return MulDiv(px, dpi, 96);
+}
 
 void UpdateTitle()
 {
     const auto &lang = GetLangStrings();
     std::wstring filename = g_state.filePath.empty() ? lang.untitled : PathFindFileNameW(g_state.filePath.c_str());
+    if (g_state.largeFileMode)
+        filename += lang.statusLargeFile;
     std::wstring title = (g_state.modified ? L"*" : L"") + filename + L" - " + lang.appName;
     SetWindowTextW(g_hwndMain, title.c_str());
 }
@@ -34,6 +52,8 @@ void UpdateStatus()
     wchar_t buf[256];
     swprintf(buf, sizeof(buf) / sizeof(wchar_t), L"%s%d%s%d ", lang.statusLn.c_str(), line, lang.statusCol.c_str(), col);
     g_statusTexts[0] = buf;
+    if (g_state.largeFileMode)
+        g_statusTexts[0] += lang.statusLargeFile;
     g_statusTexts[1] = GetEncodingName(g_state.encoding);
     g_statusTexts[2] = GetLineEndingName(g_state.lineEnding);
     wsprintfW(buf, L" %d%% ", g_state.zoomLevel);
@@ -71,10 +91,21 @@ void ResizeControls()
     RECT rc;
     GetClientRect(g_hwndMain, &rc);
     int tabsH = 0;
-    if (g_hwndTabs)
+    int editorTop = 0;
+    if (g_hwndTabs && g_state.useTabs)
     {
-        tabsH = 30;
+        tabsH = std::max(28, ScaleMainPx(32));
+        ShowWindow(g_hwndTabs, SW_SHOW);
         MoveWindow(g_hwndTabs, 0, 0, rc.right, tabsH, TRUE);
+
+        RECT displayRect{0, 0, rc.right, tabsH};
+        // Anchor editor to tab display area so active tab can visually attach to page.
+        TabCtrl_AdjustRect(g_hwndTabs, FALSE, &displayRect);
+        editorTop = std::max(0, static_cast<int>(displayRect.top) - 1);
+    }
+    else if (g_hwndTabs)
+    {
+        ShowWindow(g_hwndTabs, SW_HIDE);
     }
     int statusH = 0;
     if (g_state.showStatusBar)
@@ -87,6 +118,7 @@ void ResizeControls()
     }
     else
         ShowWindow(g_hwndStatus, SW_HIDE);
-    MoveWindow(g_hwndEditor, 0, tabsH, rc.right, rc.bottom - statusH - tabsH, TRUE);
+    MoveWindow(g_hwndEditor, 0, editorTop, rc.right, rc.bottom - statusH - editorTop, TRUE);
+    ApplyEditorViewportPadding();
     SetupStatusBarParts();
 }
