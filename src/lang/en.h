@@ -102,7 +102,7 @@ inline LangStrings g_langEN = {
     L"Cannot open file.",
     L"Cannot save file.",
     L"Error",
-    L"Technical Standard Note v1.3.8\n\nBuilt by Saka Studio & Engineering.\nA lightweight Win32 text editor focused on speed, stability, and clarity.\n", //\nModify by 0x2o.net",
+    L"Technical Standard Note v1.3.9\n\nBuilt by Saka Studio & Engineering.\nA lightweight Win32 text editor focused on speed, stability, and clarity.\n", //\nModify by 0x2o.net",
     L"Cannot load RichEdit control.",
     L"Close other tabs first, then disable tab mode.",
     L"The line number is beyond the total number of lines.",

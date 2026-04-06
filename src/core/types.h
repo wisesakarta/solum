@@ -13,7 +13,7 @@
 #include <deque>
 
 #define APP_NAME L"Technical Standard Note"
-#define APP_VERSION L"1.3.8"
+#define APP_VERSION L"1.3.9"
 #define APP_GITHUB_OWNER L"wisesakarta"
 #define APP_GITHUB_REPO L"technical-standard-note"
 #define APP_REPOSITORY_URL L"https://github.com/wisesakarta/technical-standard-note"

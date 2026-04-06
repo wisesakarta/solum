@@ -174,8 +174,8 @@ After your repo is connected to GitHub:
 Setelah repo kamu terhubung ke GitHub:
 
 1. Create and push a tag:
-   - `git tag v1.3.8`
-   - `git push origin v1.3.8`
+   - `git tag v1.3.9`
+   - `git push origin v1.3.9`
 2. Wait for `Build and Release` GitHub Actions workflow to finish.
 3. Buka halaman `Releases` dan unduh salah satu file:
    - `technical-standard-note-setup-x64.exe` (recommended for most users; creates Start Menu entry)

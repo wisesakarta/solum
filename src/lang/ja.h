@@ -102,7 +102,7 @@ inline LangStrings g_langJA = {
     L"ファイルを開けません。",
     L"ファイルを保存できません。",
     L"エラー",
-    L"Technical Standard Note v1.3.8\n\nSaka Studio & Engineering により開発。\n速度、安定性、明快さに重点を置いた軽量 Win32 テキストエディタです。\n",
+    L"Technical Standard Note v1.3.9\n\nSaka Studio & Engineering により開発。\n速度、安定性、明快さに重点を置いた軽量 Win32 テキストエディタです。\n",
     L"RichEdit コントロールを読み込めません。",
     L"先に他のタブを閉じてから、タブモードを無効にしてください。",
     L"指定した行番号は、ファイル内の総行数を超えています。",
