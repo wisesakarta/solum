@@ -21,6 +21,23 @@ technical-standard-note-logo-second/
 technical-standard-note-logoset/
 src/Technical Standard Note Icon.png
 
+# Crash/runtime diagnostics
+hs_err_pid*.log
+replay_pid*.log
+
+# Temporary audit/workspace noise
+.tmp-skill-audit-*/
+scratch/
+folder_docs.html
+
+# Keep source repo clean; publish binaries via GitHub Releases
+dist/desktop/**/*.zip
+dist/desktop/**/*.sha256
+dist/desktop/**/*.exe
+dist/android/**/*.apk
+dist/android/**/*.aab
+dist/android/**/*.sha256
+
 # Android
 android/.gradle/
 android/**/build/
