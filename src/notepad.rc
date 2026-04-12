@@ -139,6 +139,7 @@ BEGIN
     "S", IDM_FILE_SAVE, VIRTKEY, CONTROL
     "S", IDM_FILE_SAVEAS, VIRTKEY, CONTROL, SHIFT
     "P", IDM_FILE_PRINT, VIRTKEY, CONTROL
+    "P", IDM_VIEW_COMMAND_PALETTE, VIRTKEY, CONTROL, SHIFT
     "Z", IDM_EDIT_UNDO, VIRTKEY, CONTROL
     "Y", IDM_EDIT_REDO, VIRTKEY, CONTROL
     "X", IDM_EDIT_CUT, VIRTKEY, CONTROL
@@ -160,8 +161,8 @@ BEGIN
 END
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,3,10,0
- PRODUCTVERSION 1,3,10,0
+ FILEVERSION 1,3,11,0
+ PRODUCTVERSION 1,3,11,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -178,12 +179,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Technical Standard\0"
             VALUE "FileDescription", "Technical Standard Note\0"
-            VALUE "FileVersion", "1.3.10\0"
+            VALUE "FileVersion", "1.3.11\0"
             VALUE "InternalName", "technical-standard-note\0"
             VALUE "LegalCopyright", "Copyright (c) 2026 Technical Standard\0"
             VALUE "OriginalFilename", "technical-standard-note.exe\0"
             VALUE "ProductName", "Technical Standard Note\0"
-            VALUE "ProductVersion", "1.3.10\0"
+            VALUE "ProductVersion", "1.3.11\0"
         END
     END
     BLOCK "VarFileInfo"
@@ -191,4 +192,3 @@ BEGIN
         VALUE "Translation", 0x0409, 1200
     END
 END
-

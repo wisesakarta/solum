@@ -4,6 +4,7 @@
 
 inline LangStrings g_langEN = {
     L"Technical Standard Note",
+    L"TECHNICAL STANDARD NOTE",
     L"Untitled",
 
     L"&File",
@@ -96,6 +97,8 @@ inline LangStrings g_langEN = {
     L"Icon Files (*.ico)",
     L"Image Files (*.png;*.jpg;*.jpeg;*.bmp;*.gif)",
     L"All Files (*.*)",
+    L"> Type to search...",
+    L"No matching commands",
 
     L"Cannot find \"",
     L"Do you want to save changes to ",

@@ -4,6 +4,7 @@
 
 inline LangStrings g_langJA = {
     L"Technical Standard Note",
+    L"TECHNICAL STANDARD NOTE",
     L"無題",
 
     L"ファイル(&F)",
@@ -96,6 +97,8 @@ inline LangStrings g_langJA = {
     L"アイコン ファイル (*.ico)",
     L"画像ファイル (*.png;*.jpg;*.jpeg;*.bmp;*.gif)",
     L"すべてのファイル (*.*)",
+    L"> 検索キーワードを入力...",
+    L"一致するコマンドがありません",
 
     L"見つかりません: \"",
     L"次のファイルへの変更を保存しますか: ",
@@ -138,4 +141,3 @@ inline LangStrings g_langJA = {
     L"Windows (CRLF)",
     L"Unix (LF)",
     L"Macintosh (CR)"};
-

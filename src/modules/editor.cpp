@@ -13,6 +13,8 @@
 #include "ui.h"
 #include "background.h"
 #include "design_system.h"
+#include "custom_scrollbar.h"
+#include "selection_aura.h"
 #include "resource.h"
 #include <richedit.h>
 #include <commctrl.h>
@@ -102,19 +104,18 @@ static bool IsEditorWrapEnabled()
     return g_state.wordWrap && !g_state.largeFileMode;
 }
 
+DWORD BuildEditorWindowStyle()
+{
+    DWORD style = WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | ES_NOHIDESEL;
+    if (!IsEditorWrapEnabled())
+        style |= WS_HSCROLL | ES_AUTOHSCROLL;
+    return style;
+}
+
 static int ScaleEditorPx(int px)
 {
-    HWND ref = g_hwndEditor ? g_hwndEditor : g_hwndMain;
-    if (!ref)
-        return px;
-
-    HDC hdc = GetDC(ref);
-    if (!hdc)
-        return px;
-
-    const int dpi = GetDeviceCaps(hdc, LOGPIXELSY);
-    ReleaseDC(ref, hdc);
-    return MulDiv(px, dpi > 0 ? dpi : 96, 96);
+    const HWND ref = g_hwndEditor ? g_hwndEditor : g_hwndMain;
+    return DesignSystem::ScalePx(px, ref);
 }
 
 static void ApplyFlatScrollbarStyle(HWND hwnd)
@@ -127,7 +128,7 @@ static void ApplyFlatScrollbarStyle(HWND hwnd)
     const bool dark = IsDarkMode();
     const int barThickness = ScaleEditorPx(14);
     const int thumbExtent = ScaleEditorPx(26);
-    const COLORREF trackColor = dark ? RGB(0, 0, 0) : RGB(255, 255, 255);
+    const COLORREF trackColor = ThemeColorEditorBackground(dark);
 
     FlatSB_SetScrollProp(hwnd, WSB_PROP_VSTYLE, FSB_FLAT_MODE, FALSE);
     FlatSB_SetScrollProp(hwnd, WSB_PROP_HSTYLE, FSB_FLAT_MODE, FALSE);
@@ -178,9 +179,22 @@ static void ConfigureEditorInputExperience(HWND hwnd)
 #endif
 }
 
+static void EnsureNativeScrollbarsHidden(HWND hwnd)
+{
+    if (!hwnd)
+        return;
+#ifdef EM_SHOWSCROLLBAR
+    SendMessageW(hwnd, EM_SHOWSCROLLBAR, SB_VERT, FALSE);
+    SendMessageW(hwnd, EM_SHOWSCROLLBAR, SB_HORZ, FALSE);
+#endif
+    ShowScrollBar(hwnd, SB_VERT, FALSE);
+    ShowScrollBar(hwnd, SB_HORZ, FALSE);
+}
+
 namespace
 {
 bool g_suppressNextReturnChar = false;
+int g_verticalWheelDeltaRemainder = 0;
 
 struct ListContinuation
 {
@@ -393,6 +407,18 @@ std::pair<int, int> GetCursorPos()
     return {line + 1, col + 1};
 }
 
+void SetEditorLineSpacing(HWND hwnd, float multiplier)
+{
+    if (!hwnd)
+        return;
+    PARAFORMAT2 pf = {};
+    pf.cbSize = sizeof(pf);
+    pf.dwMask = PFM_LINESPACING;
+    pf.bLineSpacingRule = 5; // Spacing is dyLineSpacing / 20
+    pf.dyLineSpacing = static_cast<LONG>(20 * multiplier);
+    SendMessageW(hwnd, EM_SETPARAFORMAT, 0, reinterpret_cast<LPARAM>(&pf));
+}
+
 void ConfigureEditorControl(HWND hwnd)
 {
     if (!hwnd)
@@ -407,6 +433,9 @@ void ConfigureEditorControl(HWND hwnd)
     SendMessageW(hwnd, EM_AUTOURLDETECT, FALSE, 0);
     ConfigureEditorInputExperience(hwnd);
     ApplyFlatScrollbarStyle(hwnd);
+    EnsureNativeScrollbarsHidden(hwnd);
+
+    SetEditorLineSpacing(hwnd, 1.2f); // Renaissance Rhythm (1.2x)
 }
 
 void ApplyEditorViewportPadding()
@@ -456,6 +485,8 @@ void ApplyEditorScrollbarChrome()
 
 void ApplyFont()
 {
+    if (!g_hwndEditor)
+        return;
     if (g_state.hFont)
     {
         DeleteObject(g_state.hFont);
@@ -485,29 +516,80 @@ void ApplyFont()
         g_state.hFont = createWithFace(L"Consolas");
     if (!g_state.hFont)
         return;
-    SendMessageW(g_hwndEditor, WM_SETFONT, reinterpret_cast<WPARAM>(g_state.hFont), TRUE);
-    COLORREF textColor = ThemeColorEditorText(IsDarkMode());
-    CHARFORMAT2W cf = {};
-    cf.cbSize = sizeof(cf);
-    cf.dwMask = CFM_COLOR | CFM_FACE | CFM_SIZE | CFM_BOLD | CFM_ITALIC | CFM_UNDERLINE | CFM_CHARSET;
-    cf.dwEffects = 0;
-    if (g_state.fontWeight >= FW_BOLD)
-        cf.dwEffects |= CFE_BOLD;
-    if (g_state.fontItalic)
-        cf.dwEffects |= CFE_ITALIC;
-    if (g_state.fontUnderline)
-        cf.dwEffects |= CFE_UNDERLINE;
-    cf.yHeight = std::max(1, size) * 20;
-    cf.bCharSet = DEFAULT_CHARSET;
-    wcsncpy_s(cf.szFaceName, g_state.fontName.c_str(), _TRUNCATE);
-    cf.crTextColor = textColor;
-    SendMessageW(g_hwndEditor, EM_SETCHARFORMAT, SCF_ALL, reinterpret_cast<LPARAM>(&cf));
-    SendMessageW(g_hwndEditor, EM_SETCHARFORMAT, SCF_DEFAULT, reinterpret_cast<LPARAM>(&cf));
+
+    LOGFONTW appliedLf{};
+    if (GetObjectW(g_state.hFont, sizeof(appliedLf), &appliedLf) == sizeof(appliedLf))
+    {
+        g_state.fontName = appliedLf.lfFaceName;
+        g_state.fontWeight = appliedLf.lfWeight;
+        g_state.fontItalic = (appliedLf.lfItalic != 0);
+        g_state.fontUnderline = (appliedLf.lfUnderline != 0);
+    }
+
+    SendMessageW(g_hwndEditor, WM_SETFONT, reinterpret_cast<WPARAM>(g_state.hFont), FALSE);
+
+    if (!g_state.largeFileMode)
+    {
+        COLORREF textColor = ThemeColorEditorText(IsDarkMode());
+        CHARFORMAT2W cf = {};
+        cf.cbSize = sizeof(cf);
+        cf.dwMask = CFM_COLOR | CFM_FACE | CFM_SIZE | CFM_BOLD | CFM_ITALIC | CFM_UNDERLINE | CFM_CHARSET;
+        cf.dwEffects = 0;
+        if (g_state.fontWeight >= FW_BOLD)
+            cf.dwEffects |= CFE_BOLD;
+        if (g_state.fontItalic)
+            cf.dwEffects |= CFE_ITALIC;
+        if (g_state.fontUnderline)
+            cf.dwEffects |= CFE_UNDERLINE;
+        cf.yHeight = std::max(1, size) * 20;
+        cf.bCharSet = appliedLf.lfCharSet != 0 ? static_cast<BYTE>(appliedLf.lfCharSet) : DEFAULT_CHARSET;
+        wcsncpy_s(cf.szFaceName, g_state.fontName.c_str(), _TRUNCATE);
+        cf.crTextColor = textColor;
+
+        SendMessageW(g_hwndEditor, EM_SETCHARFORMAT, SCF_DEFAULT, reinterpret_cast<LPARAM>(&cf));
+
+        CHARRANGE savedSelection{};
+        SendMessageW(g_hwndEditor, EM_EXGETSEL, 0, reinterpret_cast<LPARAM>(&savedSelection));
+        SendMessageW(g_hwndEditor, EM_SETSEL, 0, -1);
+        SendMessageW(g_hwndEditor, EM_SETCHARFORMAT, SCF_SELECTION, reinterpret_cast<LPARAM>(&cf));
+        SendMessageW(g_hwndEditor, EM_EXSETSEL, 0, reinterpret_cast<LPARAM>(&savedSelection));
+    }
+
+    RedrawWindow(g_hwndEditor, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
 }
 
 void ApplyZoom()
 {
     ApplyFont();
+}
+
+bool ScrollEditorFromMouseWheel(HWND hwndEditor, WPARAM wParam)
+{
+    if (!hwndEditor)
+        return false;
+
+    const int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+    UINT scrollLines = 3;
+    SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &scrollLines, 0);
+    if (scrollLines == 0)
+        return true;
+
+    if (scrollLines == static_cast<UINT>(WHEEL_PAGESCROLL))
+    {
+        SendMessageW(hwndEditor, WM_VSCROLL, (delta > 0) ? SB_PAGEUP : SB_PAGEDOWN, 0);
+        return true;
+    }
+
+    g_verticalWheelDeltaRemainder += delta;
+    const int wheelSteps = g_verticalWheelDeltaRemainder / WHEEL_DELTA;
+    if (wheelSteps != 0)
+    {
+        g_verticalWheelDeltaRemainder -= wheelSteps * WHEEL_DELTA;
+        int lineDelta = -static_cast<int>(scrollLines) * wheelSteps;
+        lineDelta = std::clamp(lineDelta, -120, 120);
+        SendMessageW(hwndEditor, EM_LINESCROLL, 0, lineDelta);
+    }
+    return true;
 }
 
 void ApplyWordWrap()
@@ -516,14 +598,16 @@ void ApplyWordWrap()
     DWORD start = 0, end = 0;
     SendMessageW(g_hwndEditor, EM_GETSEL, reinterpret_cast<WPARAM>(&start), reinterpret_cast<LPARAM>(&end));
     DestroyWindow(g_hwndEditor);
-    DWORD style = WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | ES_NOHIDESEL;
-    if (!IsEditorWrapEnabled())
-        style |= WS_HSCROLL | ES_AUTOHSCROLL;
+    const DWORD style = BuildEditorWindowStyle();
     const wchar_t *editorClass = g_editorClassName.empty() ? MSFTEDIT_CLASS : g_editorClassName.c_str();
     g_hwndEditor = CreateWindowExW(0, editorClass, nullptr, style,
                                    0, 0, 100, 100, g_hwndMain, reinterpret_cast<HMENU>(IDC_EDITOR), GetModuleHandleW(nullptr), nullptr);
     g_origEditorProc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(g_hwndEditor, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(EditorSubclassProc)));
     ConfigureEditorControl(g_hwndEditor);
+    if (g_hwndScrollbar)
+        UI::CustomScrollbar::SetTarget(g_hwndScrollbar, g_hwndEditor);
+    if (g_hwndSelectionAura)
+        UI::SelectionAura::SetEditor(g_hwndSelectionAura, g_hwndEditor);
     SendMessageW(g_hwndEditor, EM_EXLIMITTEXT, 0, static_cast<LPARAM>(-1));
     SendMessageW(g_hwndEditor, EM_SETEVENTMASK, 0, ENM_CHANGE | ENM_SELCHANGE);
     ApplyEditorViewportPadding();
@@ -608,12 +692,16 @@ LRESULT CALLBACK EditorSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         }
         break;
     case WM_SIZE:
+        EnsureNativeScrollbarsHidden(hwnd);
         ApplyEditorViewportPadding();
         if (g_state.background.enabled && g_bgImage && g_bgBitmap && !g_state.largeFileMode)
         {
             DeleteObject(g_bgBitmap);
             g_bgBitmap = nullptr;
         }
+        break;
+    case WM_VSCROLL:
+        if (g_hwndScrollbar) InvalidateRect(g_hwndScrollbar, nullptr, FALSE);
         break;
     case WM_CHAR:
     {
@@ -678,7 +766,9 @@ LRESULT CALLBACK EditorSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
             }
             return 0;
         }
-        break;
+        ScrollEditorFromMouseWheel(hwnd, wParam);
+        if (g_hwndScrollbar) InvalidateRect(g_hwndScrollbar, nullptr, FALSE);
+        return 0;
     }
     case WM_MOUSEHWHEEL:
     {

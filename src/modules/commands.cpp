@@ -263,9 +263,8 @@ HWND CreateHiddenBenchmarkEditor()
     ConfigureEditorControl(hwnd);
     SendMessageW(hwnd, EM_EXLIMITTEXT, 0, static_cast<LPARAM>(-1));
     HFONT hFont = g_state.hFont ? g_state.hFont : TabGetRegularFont();
-    if (!hFont)
-        hFont = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
-    SendMessageW(hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), FALSE);
+    if (hFont)
+        SendMessageW(hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), FALSE);
     return hwnd;
 }
 

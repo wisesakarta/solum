@@ -12,6 +12,7 @@ enum class LangID
 struct LangStrings
 {
     std::wstring appName;
+    std::wstring appNameWordmark;
     std::wstring untitled;
 
     std::wstring menuFile;
@@ -104,6 +105,8 @@ struct LangStrings
     std::wstring filterIconFiles;
     std::wstring filterImageFiles;
     std::wstring filterAllFiles;
+    std::wstring palettePlaceholder;
+    std::wstring paletteNoResults;
 
     std::wstring msgCannotFind;
     std::wstring msgSaveChanges;

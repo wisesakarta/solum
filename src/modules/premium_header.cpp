@@ -1,5 +1,7 @@
 #include "premium_header.h"
 #include "design_system.h"
+#include "theme.h"
+#include "lang/lang.h"
 #include <algorithm>
 
 namespace Premium
@@ -26,12 +28,11 @@ namespace Premium
         auto pRT = m_pEngine->GetRenderTarget();
         auto pDW = m_pEngine->GetWriteFactory();
 
-        // Colors from design system
-        pRT->CreateSolidColorBrush(D2D1::ColorF(0xFFFFFF, 1.0f), &m_pTextBrush);
-        pRT->CreateSolidColorBrush(D2D1::ColorF(0xFFFFFF, 0.4f), &m_pAccentBrush);
+        pRT->CreateSolidColorBrush(D2D1::ColorF(0, 1.0f), &m_pTextBrush);
+        pRT->CreateSolidColorBrush(D2D1::ColorF(0, 0.4f), &m_pAccentBrush);
 
         pDW->CreateTextFormat(
-            L"Akkurat Mono LL",
+            DesignSystem::kUiFontPrimary,
             nullptr,
             DWRITE_FONT_WEIGHT_BOLD,
             DWRITE_FONT_STYLE_NORMAL,
@@ -47,14 +48,11 @@ namespace Premium
         }
     }
 
-    void Header::Update()
-    {
-        // Internal state updates if needed
-    }
+    void Header::Update() {}
 
     void Header::StartReveal()
     {
-        m_revealTransition.Start(0.0f, 1.0f, 800.0f); // 800ms reveal
+        m_revealTransition.Start(0.0f, 1.0f, 250.0f);
     }
 
     void Header::Render(const RECT& rect)
@@ -73,10 +71,18 @@ namespace Premium
             static_cast<float>(rect.bottom)
         );
 
-        // Render "SAKA NOTE" with reveal alpha
         if (m_pTextBrush) {
+            bool dark = IsDarkMode();
+            COLORREF cText = ThemeColorEditorText(dark);
+            m_pTextBrush->SetColor(D2D1::ColorF(
+                GetRValue(cText) / 255.0f,
+                GetGValue(cText) / 255.0f,
+                GetBValue(cText) / 255.0f
+            ));
             m_pTextBrush->SetOpacity(alpha);
-            pRT->DrawTextW(L"SAKA NOTE", 9, m_pTextFormat, layoutRect, m_pTextBrush);
+            const auto &lang = GetLangStrings();
+            const std::wstring &wordmark = lang.appNameWordmark.empty() ? lang.appName : lang.appNameWordmark;
+            pRT->DrawTextW(wordmark.c_str(), static_cast<UINT32>(wordmark.length()), m_pTextFormat, layoutRect, m_pTextBrush);
         }
     }
 }

@@ -92,13 +92,22 @@ COLORREF ThemeColorMenuBackground(bool dark)
 COLORREF ThemeColorMenuHoverBackground(bool dark)
 {
     const COLORREF base = ThemeColorMenuBackground(dark);
-    return dark ? BlendThemeColor(base, RGB(255, 255, 255), 8)
-                : BlendThemeColor(base, RGB(0, 0, 0), 6);
+    const COLORREF accent = DesignSystem::Color::kAccent;
+    // Blend a tiny bit of accent (4%) into hover for industrial awareness
+    return BlendThemeColor(base, accent, 4);
 }
 
 COLORREF ThemeColorMenuText(bool dark)
 {
     return dark ? DesignSystem::Color::kDarkInk : DesignSystem::Color::kLightInk;
+}
+
+COLORREF ThemeColorMenuDisabledText(bool dark)
+{
+    const COLORREF text = ThemeColorMenuText(dark);
+    const COLORREF bg = ThemeColorMenuBackground(dark);
+    const int bgMixPercent = dark ? 52 : 48;
+    return BlendThemeColor(text, bg, bgMixPercent);
 }
 
 COLORREF ThemeColorChromeBorder(bool dark)
@@ -375,11 +384,13 @@ void ToggleDarkMode()
 
 TabPaintPalette GetTabPaintPalette(bool dark)
 {
+    const COLORREF activeBg = ThemeColorEditorBackground(dark);
+    const COLORREF accent = DesignSystem::Color::kAccent;
+    
     if (dark)
     {
-        const COLORREF activeBg = ThemeColorEditorBackground(true);
-        const COLORREF inactiveBg = BlendThemeColor(activeBg, RGB(0, 0, 0), 30);
-        const COLORREF hoverBg = BlendThemeColor(activeBg, RGB(255, 255, 255), 6);
+        const COLORREF inactiveBg = BlendThemeColor(activeBg, DesignSystem::Color::kBlack, 20);
+        const COLORREF hoverBg = BlendThemeColor(activeBg, accent, 8); // Orange tint for hover
         return {
             activeBg,                                         // stripBg
             DesignSystem::Color::kDarkEdge,                   // stripBorder
@@ -387,17 +398,16 @@ TabPaintPalette GetTabPaintPalette(bool dark)
             inactiveBg,                                       // inactiveBg
             hoverBg,                                          // hoverBg
             DesignSystem::Color::kDarkEdge,                   // borderColor
-            BlendThemeColor(DesignSystem::Color::kDarkInk, activeBg, 34), // textColor
-            BlendThemeColor(DesignSystem::Color::kDarkInk, activeBg, 24), // activeTextColor
-            BlendThemeColor(DesignSystem::Color::kDarkInk, activeBg, 22), // closeColor
+            DesignSystem::Color::kDarkMuted,                  // textColor
+            accent,                                           // activeTextColor (Orange pop)
+            DesignSystem::Color::kDarkMuted,                  // closeColor
             hoverBg,                                          // closeHoverBg
             DesignSystem::Color::kDarkInk                     // closeHoverFg
         };
     }
 
-    const COLORREF activeBg = ThemeColorEditorBackground(false);
-    const COLORREF inactiveBg = BlendThemeColor(activeBg, RGB(0, 0, 0), 10);
-    const COLORREF hoverBg = BlendThemeColor(activeBg, RGB(0, 0, 0), 14);
+    const COLORREF inactiveBg = BlendThemeColor(activeBg, DesignSystem::Color::kBlack, 6);
+    const COLORREF hoverBg = BlendThemeColor(activeBg, accent, 12); // Orange tint for hover
     return {
         activeBg,                                           // stripBg
         DesignSystem::Color::kLightEdge,                   // stripBorder
@@ -405,10 +415,10 @@ TabPaintPalette GetTabPaintPalette(bool dark)
         inactiveBg,                                         // inactiveBg
         hoverBg,                                            // hoverBg
         DesignSystem::Color::kLightEdge,                   // borderColor
-        BlendThemeColor(DesignSystem::Color::kLightInk, activeBg, 54), // textColor
-        BlendThemeColor(DesignSystem::Color::kLightInk, activeBg, 30), // activeTextColor
-        BlendThemeColor(DesignSystem::Color::kLightInk, activeBg, 54), // closeColor
+        DesignSystem::Color::kLightMuted,                  // textColor
+        accent,                                             // activeTextColor (Orange pop)
+        DesignSystem::Color::kLightMuted,                  // closeColor
         hoverBg,                                            // closeHoverBg
-        DesignSystem::Color::kLightInk                     // closeHoverFg
+        DesignSystem::Color::kLightInk                      // closeHoverFg
     };
 }

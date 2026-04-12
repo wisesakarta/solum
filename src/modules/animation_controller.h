@@ -11,9 +11,9 @@
 
 namespace Animation
 {
-    // Standard "Emil" Easing (Cubic Bezier approx)
-    inline float EaseInOutCubic(float t) {
-        return t < 0.5f ? 4.0f * t * t * t : 1.0f - std::pow(-2.0f * t + 2.0f, 3.0f) / 2.0f;
+    inline float EaseOutPunchy(float t) {
+        float f = (t - 1.0f);
+        return f * f * f * f * f + 1.0f;
     }
 
     struct Transition {
@@ -42,7 +42,7 @@ namespace Animation
                 active = false;
                 return endValue;
             }
-            return startValue + (endValue - startValue) * EaseInOutCubic(t);
+            return startValue + (endValue - startValue) * EaseOutPunchy(t);
         }
     };
 }

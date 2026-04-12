@@ -23,6 +23,7 @@ COLORREF ThemeColorStatusText(bool dark);
 COLORREF ThemeColorMenuBackground(bool dark);
 COLORREF ThemeColorMenuHoverBackground(bool dark);
 COLORREF ThemeColorMenuText(bool dark);
+COLORREF ThemeColorMenuDisabledText(bool dark);
 COLORREF ThemeColorChromeBorder(bool dark);
 
 struct TabPaintPalette

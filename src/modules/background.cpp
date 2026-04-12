@@ -21,13 +21,7 @@ namespace
 {
 int ScaleBackgroundPx(int px)
 {
-    HWND ref = g_hwndMain ? g_hwndMain : GetDesktopWindow();
-    HDC hdc = GetDC(ref);
-    if (!hdc)
-        return px;
-    const int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
-    ReleaseDC(ref, hdc);
-    return MulDiv(px, dpi, 96);
+    return DesignSystem::ScalePx(px, g_hwndMain);
 }
 }
 
@@ -240,7 +234,7 @@ void UpdateBackgroundBitmap(HWND hwnd)
         return;
     }
 
-    COLORREF bgColor = IsDarkMode() ? DesignSystem::Color::kDarkBg : GetSysColor(COLOR_WINDOW);
+    COLORREF bgColor = ThemeColorEditorBackground(IsDarkMode());
     HBRUSH hBrush = CreateSolidBrush(bgColor);
     if (!hBrush)
     {

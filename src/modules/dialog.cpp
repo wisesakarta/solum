@@ -30,15 +30,17 @@ constexpr COLORREF kDialogDarkText = DesignSystem::Color::kDarkInk;
 INT_PTR HandleDialogPaint(HWND hDlg);
 INT_PTR HandleDialogCtlColor(UINT msg, WPARAM wParam);
 
+HFONT DialogUiFont()
+{
+    HFONT hFont = TabGetRegularFont();
+    if (!hFont)
+        hFont = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+    return hFont;
+}
+
 int ScaleDialogPx(int px)
 {
-    HWND ref = g_hwndMain ? g_hwndMain : GetDesktopWindow();
-    HDC hdc = GetDC(ref);
-    if (!hdc)
-        return px;
-    const int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
-    ReleaseDC(ref, hdc);
-    return MulDiv(px, dpi, 96);
+    return DesignSystem::ScalePx(px, g_hwndMain);
 }
 
 int MeasureDialogTextWidth(const std::wstring &text)
@@ -48,8 +50,8 @@ int MeasureDialogTextWidth(const std::wstring &text)
     if (!hdc)
         return 0;
 
-    HFONT hFont = TabGetRegularFont();
-    HGDIOBJ oldFont = SelectObject(hdc, hFont ? hFont : TabGetRegularFont());
+    const HFONT hFont = DialogUiFont();
+    HGDIOBJ oldFont = SelectObject(hdc, hFont);
     SIZE size{};
     GetTextExtentPoint32W(hdc, text.c_str(), static_cast<int>(text.size()), &size);
     SelectObject(hdc, oldFont);
@@ -69,9 +71,7 @@ UINT_PTR CALLBACK FontDialogHookProc(HWND hDlg, UINT msg, WPARAM, LPARAM)
     SetTitleBarDark(hRoot, IsDarkMode() ? TRUE : FALSE);
     ApplyThemeToWindowTree(hRoot);
 
-    HFONT hUiFont = TabGetRegularFont();
-    if (!hUiFont)
-        hUiFont = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+    const HFONT hUiFont = DialogUiFont();
 
     for (HWND h = GetWindow(hRoot, GW_CHILD); h; h = GetWindow(h, GW_HWNDNEXT))
         SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(hUiFont), TRUE);
@@ -186,9 +186,8 @@ INT_PTR HandleAboutPaint(HWND hWnd)
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, palette.textColor);
 
-    HFONT hFontReg = TabGetRegularFont();
-
-    HGDIOBJ oldFont = SelectObject(hdc, hFontReg ? hFontReg : TabGetRegularFont());
+    const HFONT hFontReg = DialogUiFont();
+    HGDIOBJ oldFont = SelectObject(hdc, hFontReg);
 
     std::wstring verText = L"v" + std::wstring(APP_VERSION);
     RECT rcVer = { 0, ScaleDialogPx(130), rcClient.right, ScaleDialogPx(155) };
@@ -382,7 +381,7 @@ void EditFind()
                                     g_hwndMain, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (g_hwndFindDlg)
     {
-        HFONT hFont = TabGetRegularFont();
+        HFONT hFont = DialogUiFont();
         CreateWindowExW(0, L"STATIC", lang.dialogFindLabel.c_str(), WS_CHILD | WS_VISIBLE, 10, 12, 45, 16, g_hwndFindDlg, nullptr, nullptr, nullptr);
         CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", g_state.findText.c_str(), WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 60, 10, 230, 20, g_hwndFindDlg, reinterpret_cast<HMENU>(1001), nullptr, nullptr);
         CreateWindowExW(0, L"BUTTON", lang.dialogFindNext.c_str(), WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 300, 10, 100, 22, g_hwndFindDlg, reinterpret_cast<HMENU>(1), nullptr, nullptr);
@@ -419,7 +418,7 @@ void EditReplace()
                                     g_hwndMain, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (g_hwndFindDlg)
     {
-        HFONT hFont = TabGetRegularFont();
+        HFONT hFont = DialogUiFont();
         CreateWindowExW(0, L"STATIC", lang.dialogFindLabel.c_str(), WS_CHILD | WS_VISIBLE, 10, 12, 45, 16, g_hwndFindDlg, nullptr, nullptr, nullptr);
         CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", g_state.findText.c_str(), WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 60, 10, 230, 20, g_hwndFindDlg, reinterpret_cast<HMENU>(1001), nullptr, nullptr);
         CreateWindowExW(0, L"STATIC", lang.dialogReplaceLabel.c_str(), WS_CHILD | WS_VISIBLE, 10, 40, 50, 16, g_hwndFindDlg, nullptr, nullptr, nullptr);
@@ -491,7 +490,7 @@ void EditGoto()
                                 g_hwndMain, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (hDlg)
     {
-        HFONT hFont = TabGetRegularFont();
+        HFONT hFont = DialogUiFont();
         CreateWindowExW(0, L"STATIC", lang.dialogLineNumber.c_str(), WS_CHILD | WS_VISIBLE, 15, 15, 100, 16, hDlg, nullptr, nullptr, nullptr);
 
         DWORD start = 0;
@@ -553,6 +552,17 @@ void FormatFont()
         g_state.fontSize = MulDiv(-lf.lfHeight, 72, GetDeviceCaps(hdc2, LOGPIXELSY));
         ReleaseDC(g_hwndMain, hdc2);
         ApplyFont();
+        if (g_state.largeFileMode)
+        {
+            const int firstVisibleBefore = static_cast<int>(SendMessageW(g_hwndEditor, EM_GETFIRSTVISIBLELINE, 0, 0));
+            ApplyWordWrap();
+            const int firstVisibleAfter = static_cast<int>(SendMessageW(g_hwndEditor, EM_GETFIRSTVISIBLELINE, 0, 0));
+            const int lineDelta = firstVisibleBefore - firstVisibleAfter;
+            if (lineDelta != 0)
+                SendMessageW(g_hwndEditor, EM_LINESCROLL, 0, lineDelta);
+        }
+        if (g_hwndScrollbar)
+            InvalidateRect(g_hwndScrollbar, nullptr, FALSE);
         SaveFontSettings();
     }
 }
@@ -629,8 +639,7 @@ void ViewTransparency()
     const int cancelX = clientW - margin - buttonW;
     const int okX = cancelX - buttonGap - buttonW;
 
-    HFONT hFont = TabGetRegularFont();
-    if (!hFont) hFont = TabGetRegularFont();
+    HFONT hFont = DialogUiFont();
     
     CreateWindowExW(0, L"STATIC", lang.dialogOpacityLabel.c_str(), WS_CHILD | WS_VISIBLE, margin, labelY, labelW, labelH, hDlg, nullptr, nullptr, nullptr);
     HWND hEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", buf, WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_AUTOHSCROLL | ES_RIGHT,
@@ -697,7 +706,7 @@ void ViewTransparency()
 void HelpAbout()
 {
     const auto &lang = GetLangStrings();
-    const wchar_t* clsName = L"SakaAboutBox";
+    const wchar_t* clsName = L"TechnicalStandardAboutBox";
 
     static bool clsRegistered = false;
     if (!clsRegistered)

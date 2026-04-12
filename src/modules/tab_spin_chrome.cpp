@@ -63,62 +63,30 @@ LRESULT CALLBACK TabSpinSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 
             FillSolidRectDc(hdc, r, bg);
 
-            if (isLeft)
-            {
-                RECT div = r;
-                div.left = div.right - 1;
-                FillSolidRectDc(hdc, div, palette.stripBorder);
-            }
-
-            RECT top = r;
-            top.bottom = top.top + 1;
-            FillSolidRectDc(hdc, top, palette.stripBorder);
-
-            RECT bottom = r;
-            bottom.top = bottom.bottom - 1;
-            FillSolidRectDc(hdc, bottom, palette.stripBorder);
-
-            if (isLeft)
-            {
-                RECT leftborder = r;
-                leftborder.right = leftborder.left + 1;
-                FillSolidRectDc(hdc, leftborder, palette.stripBorder);
-            }
-            else
-            {
-                RECT rightborder = r;
-                rightborder.left = rightborder.right - 1;
-                FillSolidRectDc(hdc, rightborder, palette.stripBorder);
-            }
-
             const int cx = r.left + (r.right - r.left) / 2;
             const int cy = r.top + (r.bottom - r.top) / 2;
 
             POINT pts[3]{};
             if (isLeft)
             {
-                pts[0] = {cx + 2, cy - 3};
+                pts[0] = {cx + 1, cy - 4};
                 pts[1] = {cx - 2, cy};
-                pts[2] = {cx + 2, cy + 3};
+                pts[2] = {cx + 1, cy + 4};
             }
             else
             {
-                pts[0] = {cx - 2, cy - 3};
-                pts[1] = {cx + 2, cy};
-                pts[2] = {cx - 2, cy + 3};
+                pts[0] = {cx - 2, cy - 4};
+                pts[1] = {cx + 1, cy};
+                pts[2] = {cx - 2, cy + 4};
             }
 
-            HPEN hPen = CreatePen(PS_SOLID, 1, palette.textColor);
-            HBRUSH hBrush = CreateSolidBrush(palette.textColor);
+            HPEN hPen = CreatePen(PS_SOLID, 2, palette.textColor);
             HGDIOBJ oldPen = SelectObject(hdc, hPen);
-            HGDIOBJ oldBrush = SelectObject(hdc, hBrush);
 
-            Polygon(hdc, pts, 3);
+            Polyline(hdc, pts, 3);
 
             SelectObject(hdc, oldPen);
-            SelectObject(hdc, oldBrush);
             DeleteObject(hPen);
-            DeleteObject(hBrush);
         };
 
         drawSpinButton(rcLeft, g_tabSpinHoverLeft, g_tabSpinPressLeft, true);

@@ -42,6 +42,9 @@
 #include "modules/design_system.h"
 #include "modules/premium_orchestrator.h"
 #include "modules/tab_spin_chrome.h"
+#include "modules/custom_scrollbar.h"
+#include "modules/selection_aura.h"
+#include "modules/command_palette.h"
 #include "lang/lang.h"
 
 static std::wstring MenuLabelForContext(const std::wstring &menuText)
@@ -149,7 +152,7 @@ static void LoadBundledFonts()
         if (GetFileAttributesW(fontPath.c_str()) == INVALID_FILE_ATTRIBUTES)
             continue;
 
-        const int added = AddFontResourceExW(fontPath.c_str(), FR_PRIVATE, nullptr);
+        const int added = AddFontResourceExW(fontPath.c_str(), 0, nullptr);
         if (added > 0)
             g_loadedPrivateFonts.push_back(std::move(fontPath));
     }
@@ -158,7 +161,7 @@ static void LoadBundledFonts()
 static void UnloadBundledFonts()
 {
     for (auto it = g_loadedPrivateFonts.rbegin(); it != g_loadedPrivateFonts.rend(); ++it)
-        RemoveFontResourceExW(it->c_str(), FR_PRIVATE, nullptr);
+        RemoveFontResourceExW(it->c_str(), 0, nullptr);
     g_loadedPrivateFonts.clear();
 }
 
@@ -1228,7 +1231,7 @@ static CommandBarPalette GetCommandBarPalette(bool dark)
             ThemeColorMenuBackground(true),
             ThemeColorChromeBorder(true),
             ThemeColorMenuText(true),
-            RGB(112, 112, 112),
+            ThemeColorMenuDisabledText(true),
             ThemeColorMenuHoverBackground(true),
             ThemeColorMenuHoverBackground(true),
         };
@@ -1238,7 +1241,7 @@ static CommandBarPalette GetCommandBarPalette(bool dark)
         ThemeColorMenuBackground(false),
         ThemeColorChromeBorder(false),
         ThemeColorMenuText(false),
-        RGB(136, 136, 136),
+        ThemeColorMenuDisabledText(false),
         ThemeColorMenuHoverBackground(false),
         ThemeColorMenuHoverBackground(false),
     };
@@ -2039,13 +2042,29 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             }
         }
         g_editorClassName = richEditClass;
-        DWORD editorStyle = WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | ES_NOHIDESEL;
-        if (!(g_state.wordWrap && !g_state.largeFileMode))
-            editorStyle |= WS_HSCROLL | ES_AUTOHSCROLL;
+        const DWORD editorStyle = BuildEditorWindowStyle();
         g_hwndEditor = CreateWindowExW(0, richEditClass, nullptr,
                                        editorStyle,
                                        0, 0, 100, 100, hwnd, reinterpret_cast<HMENU>(IDC_EDITOR), GetModuleHandleW(nullptr), nullptr);
         g_origEditorProc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(g_hwndEditor, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(EditorSubclassProc)));
+        
+        UI::CustomScrollbar::RegisterClass(GetModuleHandle(nullptr));
+        g_hwndScrollbar = UI::CustomScrollbar::Create(hwnd, g_hwndEditor);
+
+        UI::SelectionAura::RegisterClass(GetModuleHandle(nullptr));
+        g_hwndSelectionAura = UI::SelectionAura::Create(hwnd, g_hwndEditor);
+
+        UI::CommandPalette::RegisterClass(GetModuleHandle(nullptr));
+        g_hwndCommandPalette = UI::CommandPalette::Create(hwnd);
+        
+        // Populate Initial 'Studio' Commands
+        UI::CommandPalette::AddCommand(L"File: Save", L"Save current document to disk", IDM_FILE_SAVE);
+        UI::CommandPalette::AddCommand(L"File: Open", L"Open a document from disk", IDM_FILE_OPEN);
+        UI::CommandPalette::AddCommand(L"Theme: Studio Charcoal", L"Switch to industrial dark theme", IDM_VIEW_THEME_CHARCOAL);
+        UI::CommandPalette::AddCommand(L"Theme: Studio Paper", L"Switch to professional light theme", IDM_VIEW_THEME_PAPER);
+        UI::CommandPalette::AddCommand(L"Editor: Zoom In", L"Increase font size", IDM_VIEW_ZOOMIN);
+        UI::CommandPalette::AddCommand(L"Editor: Zoom Out", L"Decrease font size", IDM_VIEW_ZOOMOUT);
+
         ConfigureEditorControl(g_hwndEditor);
         if (kEnableCommandBar)
         {
@@ -2136,7 +2155,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 hbrMenu = g_hbrMenuDark;
             else
                 hbrMenu = CreateSolidBrush(menuBg);
-            FillRect(pUDM->hdc, &rcMenuBar, hbrMenu ? hbrMenu : reinterpret_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
+            FillRect(pUDM->hdc, &rcMenuBar, hbrMenu ? hbrMenu : GetSysColorBrush(COLOR_MENU));
             if ((!dark || !g_hbrMenuDark) && hbrMenu)
                 DeleteObject(hbrMenu);
 
@@ -2168,7 +2187,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         if ((pUDMI->dis.itemState & ODS_HOTLIGHT) || (pUDMI->dis.itemState & ODS_SELECTED))
             bgColor = ThemeColorMenuHoverBackground(dark);
         if (pUDMI->dis.itemState & ODS_DISABLED)
-            textColor = RGB(128, 128, 128);
+            textColor = ThemeColorMenuDisabledText(dark);
         HBRUSH hbr = CreateSolidBrush(bgColor);
         FillRect(pUDMI->um.hdc, &pUDMI->dis.rcItem, hbr);
         DeleteObject(hbr);
@@ -2204,7 +2223,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 hbrMenu = g_hbrMenuDark;
             else
                 hbrMenu = CreateSolidBrush(menuBg);
-            FillRect(hdc, &rcMenuBar, hbrMenu ? hbrMenu : reinterpret_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
+            FillRect(hdc, &rcMenuBar, hbrMenu ? hbrMenu : GetSysColorBrush(COLOR_MENU));
             if ((!dark || !g_hbrMenuDark) && hbrMenu)
                 DeleteObject(hbrMenu);
 
@@ -2417,6 +2436,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 g_state.modified = true;
                 UpdateTitle();
             }
+#ifdef EM_SHOWSCROLLBAR
+            SendMessageW(g_hwndEditor, EM_SHOWSCROLLBAR, SB_VERT, FALSE);
+            SendMessageW(g_hwndEditor, EM_SHOWSCROLLBAR, SB_HORZ, FALSE);
+#endif
+            ShowScrollBar(g_hwndEditor, SB_VERT, FALSE);
+            ShowScrollBar(g_hwndEditor, SB_HORZ, FALSE);
+            if (g_hwndScrollbar)
+                InvalidateRect(g_hwndScrollbar, nullptr, FALSE);
             SyncDocumentFromState(g_activeDocument, false);
             RefreshCommandBarStates();
             MarkSessionDirty();
@@ -2477,6 +2504,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 break;
             switch (cmd)
             {
+            case IDM_VIEW_COMMAND_PALETTE:
+                UI::CommandPalette::Show(g_hwndCommandPalette);
+                break;
+            case IDM_VIEW_THEME_CHARCOAL:
+                g_state.theme = Theme::Dark;
+                ApplyTheme();
+                break;
+            case IDM_VIEW_THEME_PAPER:
+                g_state.theme = Theme::Light;
+                ApplyTheme();
+                break;
             case IDM_VIEW_USETABS:
                 if (g_state.useTabs && g_documents.size() > 1)
                 {
@@ -2619,6 +2657,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         }
         if (pnmh->hwndFrom == g_hwndEditor && pnmh->code == EN_SELCHANGE)
         {
+            if (g_hwndSelectionAura) UI::SelectionAura::Update(g_hwndSelectionAura);
             UpdateStatus();
         }
         if (pnmh->hwndFrom == g_hwndEditor && pnmh->code == EN_LINK)
@@ -2722,6 +2761,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 ViewZoomIn();
             else
                 ViewZoomOut();
+            return 0;
+        }
+        if (g_hwndEditor && ScrollEditorFromMouseWheel(g_hwndEditor, wParam))
+        {
+            if (g_hwndScrollbar)
+                InvalidateRect(g_hwndScrollbar, nullptr, FALSE);
             return 0;
         }
         break;
@@ -2841,6 +2886,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow)
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0))
     {
+        // When Command Palette is active, route ALL keyboard input
+        // directly to it — bypass accelerators and dialog hooks.
+        if (g_hwndCommandPalette && UI::CommandPalette::IsVisible(g_hwndCommandPalette))
+        {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+            continue;
+        }
         if (g_hwndFindDlg && IsDialogMessageW(g_hwndFindDlg, &msg))
             continue;
         if (!TranslateAcceleratorW(g_hwndMain, g_hAccel, &msg))

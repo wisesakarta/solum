@@ -12,6 +12,8 @@
 #include "lang/lang.h"
 #include "editor.h"
 #include "file.h"
+#include "custom_scrollbar.h"
+#include "selection_aura.h"
 #include <commctrl.h>
 #include <shlwapi.h>
 #include <algorithm>
@@ -88,7 +90,7 @@ void SetupStatusBarParts()
     {
         SIZE sz{};
         GetTextExtentPoint32W(hdc, s.c_str(), static_cast<int>(s.size()), &sz);
-        return sz.cx + ScaleMainPx(28);
+        return sz.cx + ScaleMainPx(32); // 4 * 8dp grid for robust padding
     };
 
     const auto padded = [](const std::wstring &text)
@@ -156,7 +158,23 @@ void ResizeControls()
     }
     else
         ShowWindow(g_hwndStatus, SW_HIDE);
-    MoveWindow(g_hwndEditor, 0, editorTop, rc.right, rc.bottom - statusH - editorTop, TRUE);
+    const int scrollbarWidth = ScaleMainPx(12);
+    const int editorWidth = rc.right - scrollbarWidth;
+    const int editorHeight = rc.bottom - statusH - editorTop;
+
+    MoveWindow(g_hwndEditor, 0, editorTop, editorWidth, editorHeight, TRUE);
+    
+    if (g_hwndScrollbar)
+    {
+        MoveWindow(g_hwndScrollbar, editorWidth, editorTop, scrollbarWidth, editorHeight, TRUE);
+        InvalidateRect(g_hwndScrollbar, nullptr, FALSE);
+    }
+
+    if (g_hwndSelectionAura)
+    {
+        MoveWindow(g_hwndSelectionAura, 0, editorTop, editorWidth, editorHeight, TRUE);
+    }
+
     ApplyEditorViewportPadding();
     SetupStatusBarParts();
 }
