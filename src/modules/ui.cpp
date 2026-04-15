@@ -140,7 +140,7 @@ void ResizeControls()
     {
         tabsH = std::max(30, ScaleMainPx(DesignSystem::kChromeBandHeightPx));
         ShowWindow(g_hwndTabs, SW_SHOW);
-        MoveWindow(g_hwndTabs, 0, topOffset, rc.right, tabsH, TRUE);
+        MoveWindow(g_hwndTabs, 0, topOffset, static_cast<int>(rc.right), tabsH, TRUE);
         editorTop = topOffset + tabsH;
     }
     else if (g_hwndTabs)

@@ -601,11 +601,76 @@ static void RebuildTabsControl()
     RedrawWindow(g_hwndTabs, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
 }
 
+static bool GetTabContentRect(int index, RECT &contentRect)
+{
+    if (!g_hwndTabs || index < 0)
+        return false;
+
+    const int tabCount = std::min(TabCtrl_GetItemCount(g_hwndTabs), static_cast<int>(g_documents.size()));
+    if (index >= tabCount)
+        return false;
+
+    RECT rawItemRect{};
+    if (!TabCtrl_GetItemRect(g_hwndTabs, index, &rawItemRect))
+        return false;
+
+    RECT tabsClient{};
+    GetClientRect(g_hwndTabs, &tabsClient);
+
+    contentRect = rawItemRect;
+    if (index == 0)
+    {
+        contentRect.left = 0;
+    }
+    else
+    {
+        RECT prevRect{};
+        if (TabCtrl_GetItemRect(g_hwndTabs, index - 1, &prevRect))
+            contentRect.left = prevRect.right;
+    }
+
+    if (index == tabCount - 1)
+    {
+        contentRect.right = tabsClient.right;
+    }
+    else
+    {
+        RECT nextRect{};
+        if (TabCtrl_GetItemRect(g_hwndTabs, index + 1, &nextRect))
+            contentRect.right = nextRect.left;
+    }
+
+    contentRect.top = 0;
+    contentRect.bottom = tabsClient.bottom;
+    if (contentRect.right <= contentRect.left)
+        contentRect.right = contentRect.left + 1;
+    if (contentRect.bottom <= contentRect.top)
+        contentRect.bottom = contentRect.top + 1;
+    return true;
+}
+
+static bool GetTabCloseRect(int index, RECT &closeRect)
+{
+    RECT contentRect{};
+    if (!GetTabContentRect(index, contentRect))
+        return false;
+
+    const int glyphSize = TabScalePx(10);
+    const int rightInset = TabScalePx(10);
+    const int centerY = contentRect.top + ((contentRect.bottom - contentRect.top) / 2);
+    closeRect.right = contentRect.right - rightInset;
+    closeRect.left = closeRect.right - glyphSize;
+    closeRect.top = centerY - (glyphSize / 2);
+    closeRect.bottom = closeRect.top + glyphSize;
+    return closeRect.right > closeRect.left && closeRect.bottom > closeRect.top;
+}
+
 static bool IsTabCloseRectHit(int index, POINT ptClient)
 {
-    (void)index;
-    (void)ptClient;
-    return false;
+    RECT closeRect{};
+    if (!GetTabCloseRect(index, closeRect))
+        return false;
+    return PtInRect(&closeRect, ptClient) != FALSE;
 }
 
 static bool IsTabCloseHotspot(int index, POINT ptClient)
@@ -1551,40 +1616,9 @@ static void DrawTabItemVisual(HDC hdc, int index, const RECT &rawItemRect, const
     const bool selected = (index == visualActiveIndex);
     const bool hovered = (index == g_hoverTabIndex);
     const bool dark = IsDarkMode();
-    const int tabCount = std::min(TabCtrl_GetItemCount(g_hwndTabs), static_cast<int>(g_documents.size()));
-
-    RECT tabsClient{};
-    GetClientRect(g_hwndTabs, &tabsClient);
-
     RECT contentRect = rawItemRect;
-    if (index == 0)
-    {
-        contentRect.left = 0;
-    }
-    else
-    {
-        RECT prevRect{};
-        if (TabCtrl_GetItemRect(g_hwndTabs, index - 1, &prevRect))
-            contentRect.left = prevRect.right;
-    }
-
-    if (index == tabCount - 1)
-    {
-        contentRect.right = tabsClient.right;
-    }
-    else
-    {
-        RECT nextRect{};
-        if (TabCtrl_GetItemRect(g_hwndTabs, index + 1, &nextRect))
-            contentRect.right = nextRect.left;
-    }
-
-    contentRect.top = 0;
-    contentRect.bottom = tabsClient.bottom;
-    if (contentRect.right <= contentRect.left)
-        contentRect.right = contentRect.left + 1;
-    if (contentRect.bottom <= contentRect.top)
-        contentRect.bottom = contentRect.top + 1;
+    if (!GetTabContentRect(index, contentRect))
+        return;
 
     const COLORREF activeSurface = ThemeColorEditorBackground(dark);
     const int stroke = std::max(1, TabScalePx(DesignSystem::kTabSeamStrokePx));
@@ -1616,6 +1650,9 @@ static void DrawTabItemVisual(HDC hdc, int index, const RECT &rawItemRect, const
     RECT textRect = contentRect;
     textRect.left += TabScalePx(DesignSystem::kTabTextPaddingHPx);
     textRect.right -= TabScalePx(DesignSystem::kTabTextPaddingHPx);
+    RECT closeRect{};
+    if (GetTabCloseRect(index, closeRect))
+        textRect.right = std::max(textRect.left, closeRect.left - TabScalePx(8));
     if (textRect.right < textRect.left)
         textRect.right = textRect.left;
     std::wstring label = DocumentTabLabel(g_documents[index]);
@@ -1631,6 +1668,33 @@ static void DrawTabItemVisual(HDC hdc, int index, const RECT &rawItemRect, const
     DrawTextW(hdc, label.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
     if (oldFont)
         SelectObject(hdc, oldFont);
+
+    if (hovered && GetTabCloseRect(index, closeRect))
+    {
+        const bool closeHovered = g_hoverTabClose && (index == g_hoverTabIndex);
+        const COLORREF closeColor = closeHovered
+                                        ? DesignSystem::Color::kAccent
+                                        : (dark ? BlendColor(DesignSystem::Color::kAccent, palette.textColor, 72)
+                                                : BlendColor(palette.textColor, itemBg, 68));
+        HPEN pen = CreatePen(PS_SOLID, std::max(1, TabScalePx(1)), closeColor);
+        HGDIOBJ oldPen = pen ? SelectObject(hdc, pen) : nullptr;
+
+        const int inset = std::max(1, TabScalePx(1));
+        const int left = closeRect.left + inset;
+        const int top = closeRect.top + inset;
+        const int right = closeRect.right - inset;
+        const int bottom = closeRect.bottom - inset;
+
+        MoveToEx(hdc, left, top, nullptr);
+        LineTo(hdc, right, bottom);
+        MoveToEx(hdc, right, top, nullptr);
+        LineTo(hdc, left, bottom);
+
+        if (oldPen)
+            SelectObject(hdc, oldPen);
+        if (pen)
+            DeleteObject(pen);
+    }
 
     if (selected)
     {
@@ -1767,14 +1831,18 @@ static void PaintTabStripBuffered(HWND hwnd, HDC targetHdc)
 
 static void UpdateTabsHoverState(HWND hwnd, POINT ptClient)
 {
+    const int prevHoverIndex = g_hoverTabIndex;
+    const bool prevHoverClose = g_hoverTabClose;
+
     TCHITTESTINFO hit{};
     hit.pt = ptClient;
-    const int prevHoverIndex = g_hoverTabIndex;
     const int hoverIndex = TabCtrl_HitTest(hwnd, &hit);
+    const bool hoverClose = (hoverIndex >= 0) ? IsTabCloseRectHit(hoverIndex, ptClient) : false;
+
     if (hoverIndex != g_hoverTabIndex)
     {
         g_hoverTabIndex = hoverIndex;
-        g_hoverTabClose = false;
+        g_hoverTabClose = hoverClose;
         if (prevHoverIndex != hoverIndex)
         {
             InvalidateTabItem(hwnd, prevHoverIndex);
@@ -1784,6 +1852,11 @@ static void UpdateTabsHoverState(HWND hwnd, POINT ptClient)
         {
             InvalidateTabItem(hwnd, hoverIndex);
         }
+    }
+    else if (hoverClose != prevHoverClose)
+    {
+        g_hoverTabClose = hoverClose;
+        InvalidateTabItem(hwnd, hoverIndex);
     }
 
     if (!g_trackingTabsMouse)
@@ -1865,6 +1938,7 @@ static LRESULT CALLBACK TabsSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
             break;
 
         POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+        UpdateTabsHoverState(hwnd, pt);
         TCHITTESTINFO hit{};
         hit.pt = pt;
         int index = TabCtrl_HitTest(hwnd, &hit);
@@ -1919,6 +1993,7 @@ static LRESULT CALLBACK TabsSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
     {
         const bool wasDragging = g_draggingTab;
         POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+        UpdateTabsHoverState(hwnd, pt);
         TCHITTESTINFO hit{};
         hit.pt = pt;
         int index = TabCtrl_HitTest(hwnd, &hit);
@@ -2451,7 +2526,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             MarkSessionDirty();
             return 0;
         }
-
         if (cmd >= IDM_FILE_RECENT_BASE && cmd < IDM_FILE_RECENT_BASE + MAX_RECENT_FILES)
         {
             int idx = cmd - IDM_FILE_RECENT_BASE;
