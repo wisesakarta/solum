@@ -1,12 +1,12 @@
-# Solum Studio
+# Solum
 
 <p align="center">
-  <img src="assets/icons/app_icon.png" alt="Solum Studio Monolith" width="128">
+  <img src="assets/icons/app_icon.png" alt="Solum Monolith" width="128">
 </p>
 
-**Solum Studio** is a high-fidelity, Win32 text editor focused on speed, stability, and the "Renaissance of Software" craftsmanship.
+**Solum** is a high-fidelity, Win32 text editor focused on speed, stability, and the "Renaissance of Software" craftsmanship.
 
-**Solum Studio** adalah editor teks Win32 beresolusi tinggi yang berfokus pada kecepatan, stabilitas, dan keahlian rekayasa perangkat lunak "Renaissance".
+**Solum** adalah editor teks Win32 beresolusi tinggi yang berfokus pada kecepatan, stabilitas, dan keahlian rekayasa perangkat lunak "Renaissance".
 
 ## Scope
 
