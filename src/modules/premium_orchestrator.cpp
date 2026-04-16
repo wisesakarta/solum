@@ -1,4 +1,4 @@
-﻿/*
+/*
   Solum
 
   Premium header render orchestration extracted from main.cpp.
@@ -185,7 +185,7 @@ bool OnTimer(HWND hwndMain, WPARAM timerId)
     if (!g_enabled || !g_active || !hwndMain)
         return true;
 
-    g_header.Update();
+    g_header.Update(0.016f);
     RECT headerRect{};
     if (GetHeaderRectClient(headerRect))
         InvalidateRect(hwndMain, &headerRect, FALSE);

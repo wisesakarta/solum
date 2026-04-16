@@ -1,4 +1,4 @@
-﻿/*
+/*
   Solum
   
   Premium header component using Direct2D for hardware-accelerated 
@@ -7,7 +7,7 @@
 
 #pragma once
 #include "graphics_engine.h"
-#include "animation_controller.h"
+#include "../core/spring_solver.h"
 #include <string>
 
 namespace Premium
@@ -19,13 +19,13 @@ namespace Premium
         ~Header();
 
         bool Initialize(Graphics::Engine* pEngine);
-        void Update();
+        void Update(float dt);
         void Render(const RECT& rect);
         void StartReveal();
 
     private:
         Graphics::Engine* m_pEngine = nullptr;
-        Animation::Transition m_revealTransition;
+        Core::Spring m_revealSpring;
         ID2D1SolidColorBrush* m_pAccentBrush = nullptr;
         ID2D1SolidColorBrush* m_pTextBrush = nullptr;
         IDWriteTextFormat* m_pTextFormat = nullptr;

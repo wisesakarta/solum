@@ -31,6 +31,11 @@ inline constexpr int kTabSeparatorAlphaPct = 8;
 inline constexpr int kTabInnerPaddingHPx = 16;
 inline constexpr int kTabInnerPaddingVPx = 6;
 inline constexpr int kTabFixedWidthPx = 180;
+inline constexpr int kTabCloseGlyphSizePx = 10;
+inline constexpr int kTabCloseRightInsetPx = 10;
+
+inline constexpr int kGlobalMarginPx = 12;
+inline constexpr int kEditorInsetPx = 2;
 
 inline float GetDpiScale(HWND hwnd = nullptr)
 {

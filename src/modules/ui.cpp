@@ -158,22 +158,25 @@ void ResizeControls()
     }
     else
         ShowWindow(g_hwndStatus, SW_HIDE);
-    const int scrollbarWidth = ScaleMainPx(12);
-    const int editorWidth = rc.right - scrollbarWidth;
-    const int editorHeight = rc.bottom - statusH - editorTop;
 
-    MoveWindow(g_hwndEditor, 0, editorTop, editorWidth, editorHeight, TRUE);
+    const int margin = ScaleMainPx(DesignSystem::kGlobalMarginPx);
+    const int scrollbarWidth = ScaleMainPx(12);
+    const int editorX = margin;
+    const int editorWidth = rc.right - (margin * 2) - scrollbarWidth;
+    const int editorHeight = rc.bottom - statusH - editorTop - margin;
+
+    MoveWindow(g_hwndEditor, editorX, editorTop + (margin / 2), editorWidth, editorHeight, TRUE);
     
     if (g_hwndScrollbar)
     {
-        MoveWindow(g_hwndScrollbar, editorWidth, editorTop, scrollbarWidth, editorHeight, TRUE);
+        MoveWindow(g_hwndScrollbar, editorX + editorWidth, editorTop + (margin / 2), scrollbarWidth, editorHeight, TRUE);
         InvalidateRect(g_hwndScrollbar, nullptr, FALSE);
     }
 
     if (g_hwndSelectionAura)
     {
         // Restored to main window child, position must account for top offsets
-        MoveWindow(g_hwndSelectionAura, 0, editorTop, editorWidth, editorHeight, TRUE);
+        MoveWindow(g_hwndSelectionAura, editorX, editorTop + (margin / 2), editorWidth, editorHeight, TRUE);
     }
 
     ApplyEditorViewportPadding();

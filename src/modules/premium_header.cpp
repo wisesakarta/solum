@@ -48,11 +48,18 @@ namespace Premium
         }
     }
 
-    void Header::Update() {}
+    void Header::Update(float dt)
+    {
+        if (m_isInitialized)
+        {
+            m_revealSpring.Update(dt);
+        }
+    }
 
     void Header::StartReveal()
     {
-        m_revealTransition.Start(0.0f, 1.0f, 250.0f);
+        m_revealSpring.Reset(0.0f);
+        m_revealSpring.target = 1.0f;
     }
 
     void Header::Render(const RECT& rect)
@@ -62,7 +69,7 @@ namespace Premium
         auto pRT = m_pEngine->GetRenderTarget();
         if (!pRT) return;
 
-        float alpha = m_revealTransition.GetCurrentValue();
+        float alpha = m_revealSpring.x;
         
         D2D1_RECT_F layoutRect = D2D1::RectF(
             static_cast<float>(rect.left),

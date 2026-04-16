@@ -45,6 +45,7 @@
 #include "modules/custom_scrollbar.h"
 #include "modules/selection_aura.h"
 #include "modules/command_palette.h"
+#include "core/spring_solver.h"
 #include "lang/lang.h"
 
 static std::wstring MenuLabelForContext(const std::wstring &menuText)
@@ -89,6 +90,8 @@ static HBITMAP g_tabBackbufferBitmap = nullptr;
 static HBITMAP g_tabBackbufferPrevBitmap = nullptr;
 static int g_tabBackbufferWidth = 0;
 static int g_tabBackbufferHeight = 0;
+static Core::Spring g_tabSeamX;
+static Core::Spring g_tabSeamW;
 
 static std::wstring RuntimeDirectoryPath()
 {
@@ -266,6 +269,9 @@ static std::wstring CommandBarLabelForId(UINT_PTR id)
         return L"";
     }
 }
+
+static void RefreshCommandBarLabels();
+static bool GetTabContentRect(int index, RECT &contentRect);
 
 static void RefreshCommandBarLabels()
 {
@@ -594,8 +600,14 @@ static void RebuildTabsControl()
         TabCtrl_InsertItem(g_hwndTabs, i, &item);
     }
 
-    if (g_activeDocument >= 0 && g_activeDocument < static_cast<int>(g_documents.size()))
+    if (g_activeDocument >= 0 && g_activeDocument < static_cast<int>(g_documents.size())) {
         TabCtrl_SetCurSel(g_hwndTabs, g_activeDocument);
+        RECT rc;
+        if (GetTabContentRect(g_activeDocument, rc)) {
+            g_tabSeamX.Reset(static_cast<float>(rc.left));
+            g_tabSeamW.Reset(static_cast<float>(rc.right - rc.left));
+        }
+    }
     g_updatingTabs = false;
     // Ensure visual state of active/non-active tabs is refreshed in one pass.
     RedrawWindow(g_hwndTabs, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
@@ -655,8 +667,8 @@ static bool GetTabCloseRect(int index, RECT &closeRect)
     if (!GetTabContentRect(index, contentRect))
         return false;
 
-    const int glyphSize = TabScalePx(10);
-    const int rightInset = TabScalePx(10);
+    const int glyphSize = TabScalePx(DesignSystem::kTabCloseGlyphSizePx);
+    const int rightInset = TabScalePx(DesignSystem::kTabCloseRightInsetPx);
     const int centerY = contentRect.top + ((contentRect.bottom - contentRect.top) / 2);
     closeRect.right = contentRect.right - rightInset;
     closeRect.left = closeRect.right - glyphSize;
@@ -765,8 +777,12 @@ static void SwitchToDocument(int index)
     g_activeDocument = index;
     if (previousIndex >= 0)
         TabCompactDocumentTextIfEligible(g_documents, previousIndex, g_activeDocument, kTabMemoryCompactThresholdBytes, SessionPathExists);
-    if (g_hwndTabs)
-        TabCtrl_SetCurSel(g_hwndTabs, index);
+    TabCtrl_SetCurSel(g_hwndTabs, index);
+    RECT rc;
+    if (GetTabContentRect(index, rc)) {
+        g_tabSeamX.target = static_cast<float>(rc.left);
+        g_tabSeamW.target = static_cast<float>(rc.right - rc.left);
+    }
     LoadStateFromDocument(index);
     if (g_hwndTabs)
     {
@@ -1620,7 +1636,6 @@ static void DrawTabItemVisual(HDC hdc, int index, const RECT &rawItemRect, const
     if (!GetTabContentRect(index, contentRect))
         return;
 
-    const COLORREF activeSurface = ThemeColorEditorBackground(dark);
     const int stroke = std::max(1, TabScalePx(DesignSystem::kTabSeamStrokePx));
     const COLORREF selectedBg = palette.activeBg;
     const COLORREF itemBg = selected ? selectedBg : (hovered ? palette.hoverBg : palette.inactiveBg);
@@ -1696,14 +1711,7 @@ static void DrawTabItemVisual(HDC hdc, int index, const RECT &rawItemRect, const
             DeleteObject(pen);
     }
 
-    if (selected)
-    {
-        // Cut the strip divider under active tab to visually attach tab to editor.
-        const int seamStroke = stroke;
-        RECT seamRect = contentRect;
-        seamRect.top = std::max(seamRect.top, seamRect.bottom - seamStroke);
-        FillSolidRectDc(hdc, seamRect, activeSurface);
-    }
+    // Active seam is now handled by sliding spring in PaintTabStripVisual
 }
 
 [[maybe_unused]] static void PaintTabStripVisual(HDC hdc)
@@ -1731,6 +1739,15 @@ static void DrawTabItemVisual(HDC hdc, int index, const RECT &rawItemRect, const
         if (TabCtrl_GetItemRect(g_hwndTabs, g_activeDocument, &activeRect))
             DrawTabItemVisual(hdc, g_activeDocument, activeRect, palette);
     }
+
+    // Draw Sliding Seam (Renaissance Spring)
+    const int stroke = std::max(1, TabScalePx(DesignSystem::kTabSeamStrokePx));
+    const COLORREF activeSurface = ThemeColorEditorBackground(IsDarkMode());
+    RECT seamRect = rcClient;
+    seamRect.left = static_cast<int>(g_tabSeamX.x);
+    seamRect.right = seamRect.left + static_cast<int>(g_tabSeamW.x);
+    seamRect.top = std::max(rcClient.top, rcClient.bottom - stroke);
+    FillSolidRectDc(hdc, seamRect, activeSurface);
 }
 
 static void ReleaseTabBackbuffer()
@@ -1926,10 +1943,17 @@ static LRESULT CALLBACK TabsSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
     case WM_PAINT:
     {
         TabSpinAttachIfNeeded(hwnd);
+        const float dt = 0.016f; // Standard 60fps delta
+        g_tabSeamX.Update(dt);
+        g_tabSeamW.Update(dt);
+
         PAINTSTRUCT ps{};
         HDC hdc = BeginPaint(hwnd, &ps);
         PaintTabStripBuffered(hwnd, hdc);
         EndPaint(hwnd, &ps);
+
+        if (!g_tabSeamX.IsSettled() || !g_tabSeamW.IsSettled())
+            InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
     }
     case WM_LBUTTONDOWN:
