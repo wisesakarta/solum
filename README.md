@@ -1,7 +1,7 @@
 # Otso
 
 <p align="center">
-  <img src="assets/icons/app_icon.png" alt="Otso Monolith" width="128">
+  <img src="assets/icons/otso_icon.png" alt="Otso" width="128">
 </p>
 
 **Otso** is a high-fidelity, Win32 text editor focused on speed, stability, and the "Renaissance of Software" craftsmanship.
@@ -78,7 +78,6 @@ Release assets are intentionally minimal:
 - Language policy: `docs/language-standard.md`
 - Test protocol: `docs/testing/claim-test-protocol.md`
 - Desktop release notes: `docs/releases/`
-- Mobile/internal learning notes: `docs/mobile/`
 - Debt/audit data: `docs/audits/`
 
 ## Upstream Attribution
