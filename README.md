@@ -1,7 +1,7 @@
 # Otso
 
 <p align="center">
-  <img src="assets/icons/otso_icon.png" alt="Otso" width="128">
+  <img src="assets/icons/otso_icon.png" alt="Otso" width="320">
 </p>
 
 **Otso** is a high-fidelity, Win32 text editor focused on speed, stability, and the "Renaissance of Software" craftsmanship.
